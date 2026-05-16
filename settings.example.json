@@ -1,0 +1,8 @@
+{
+  "_说明": "把本文件复制为同目录的 settings.json 再填写。改完保存后，在应用右上角点刷新按钮重新扫描即可生效（无需重新编译）。",
+  "_用法": "claudeDataDir 填你的 .claude 目录（里面应含 history.jsonl / projects / sessions）。下面三项为可选的单独覆盖，留空则用 claudeDataDir 推导。全部留空 = 默认读取 ~/.claude。",
+  "claudeDataDir": "",
+  "historyFile": "",
+  "projectsDir": "",
+  "sessionsDir": ""
+}

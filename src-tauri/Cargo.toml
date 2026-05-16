@@ -1,0 +1,29 @@
+[package]
+name = "cc-history-viewer"
+version = "0.1.0"
+description = "可视化本地 Claude Code 的历史对话与 Prompt"
+authors = ["xzl"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "cc_history_viewer_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "5"
+walkdir = "2"
+chrono = { version = "0.4", features = ["clock"] }
+rayon = "1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

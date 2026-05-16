@@ -1,0 +1,24 @@
+import { Navigate, Route, Routes } from "react-router-dom";
+import { StoreProvider } from "@/store";
+import { Layout } from "@/components/Layout";
+import { Home } from "@/pages/Home";
+import { ProjectPrompts } from "@/pages/ProjectPrompts";
+import { ConversationDetail } from "@/pages/ConversationDetail";
+
+export default function App() {
+  return (
+    <StoreProvider>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route index element={<Home />} />
+          <Route path="project/:encoded" element={<ProjectPrompts />} />
+          <Route
+            path="conversation/:sessionId"
+            element={<ConversationDetail />}
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    </StoreProvider>
+  );
+}

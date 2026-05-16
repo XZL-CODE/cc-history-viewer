@@ -1,0 +1,23 @@
+# 依赖
+node_modules/
+.pnpm-store/
+
+# 前端构建产物
+dist/
+dist-ssr/
+
+# Rust / Tauri 构建产物
+src-tauri/target/
+src-tauri/gen/
+
+# 编辑器 / 系统
+.DS_Store
+.vscode/
+.idea/
+*.log
+
+# 本地数据源配置（含机器特定路径，不入库；模板见 settings.example.json）
+settings.json
+
+# 索引缓存（实际写在系统应用数据目录，此处仅作保险）
+index_cache.json
