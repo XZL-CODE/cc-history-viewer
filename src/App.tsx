@@ -4,6 +4,7 @@ import { Layout } from "@/components/Layout";
 import { Home } from "@/pages/Home";
 import { ProjectPrompts } from "@/pages/ProjectPrompts";
 import { ConversationDetail } from "@/pages/ConversationDetail";
+import { Export } from "@/pages/Export";
 
 export default function App() {
   return (
@@ -11,6 +12,7 @@ export default function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<Home />} />
+          <Route path="export" element={<Export />} />
           <Route path="project/:encoded" element={<ProjectPrompts />} />
           <Route
             path="conversation/:sessionId"

@@ -1,4 +1,5 @@
 mod commands;
+mod export;
 mod indexer;
 mod models;
 mod parser;
@@ -21,6 +22,8 @@ pub fn run() {
             commands::get_conversation,
             commands::get_index_meta,
             commands::refresh_index,
+            commands::build_prompt_export,
+            commands::reveal_path,
         ])
         .run(tauri::generate_context!())
         .expect("启动 Tauri 应用失败");

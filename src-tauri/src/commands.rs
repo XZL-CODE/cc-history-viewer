@@ -1,10 +1,11 @@
 //! 暴露给前端的 Tauri Commands。
 
+use crate::export::{self, ExportParams};
 use crate::indexer::{self, AppIndex};
 use crate::models::*;
 use crate::parser;
 use crate::state::{resolve_data_paths, AppState};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager, State};
 
 /// 索引磁盘缓存文件路径
@@ -193,4 +194,110 @@ pub fn refresh_index(
     let mut guard = state.index.lock().map_err(|e| e.to_string())?;
     *guard = Some(idx);
     Ok(meta)
+}
+
+/// 按日期范围导出 prompt。
+/// write=false 仅生成预览与统计；write=true 额外把完整 Markdown 写入 ~/Downloads。
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub fn build_prompt_export(
+    start_date: String,
+    end_date: String,
+    project: Option<String>,
+    include_commands: bool,
+    group_by: Option<String>,
+    write: bool,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<ExportResult, String> {
+    let start_ms = export::day_start_ms(&start_date)
+        .ok_or_else(|| format!("起始日期无法解析：{start_date}"))?;
+    let end_ms =
+        export::day_end_ms(&end_date).ok_or_else(|| format!("结束日期无法解析：{end_date}"))?;
+    if start_ms > end_ms {
+        return Err("起始日期不能晚于结束日期。".to_string());
+    }
+    let group = group_by.unwrap_or_else(|| "project".to_string());
+
+    let data = read_index(&state, &app, |idx| {
+        export::build(
+            &idx.prompts,
+            &ExportParams {
+                start_ms,
+                end_ms,
+                project: project.as_deref(),
+                include_commands,
+                group_by: &group,
+                start_date: &start_date,
+                end_date: &end_date,
+            },
+        )
+    })?;
+
+    let mut path: Option<String> = None;
+    if write {
+        if data.prompt_count == 0 {
+            return Err("该范围内没有可导出的 prompt。".to_string());
+        }
+        let base = format!("CC-Prompts_{start_date}_{end_date}");
+        let target = unique_export_path(&base);
+        std::fs::write(&target, &data.markdown).map_err(|e| format!("写入文件失败：{e}"))?;
+        path = Some(target.to_string_lossy().to_string());
+    }
+
+    Ok(ExportResult {
+        preview: data.preview(),
+        path,
+        prompt_count: data.prompt_count,
+        folder_count: data.folder_count,
+        day_count: data.day_count,
+    })
+}
+
+/// 在系统文件管理器中定位某个文件（macOS：Finder 选中）。
+#[tauri::command]
+pub fn reveal_path(path: String) -> Result<(), String> {
+    let p = PathBuf::from(&path);
+    if !p.exists() {
+        return Err("文件不存在或已被移动。".to_string());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(&p)
+            .spawn()
+            .map_err(|e| format!("无法打开 Finder：{e}"))?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg("/select,")
+            .arg(&p)
+            .spawn()
+            .map_err(|e| format!("无法打开资源管理器：{e}"))?;
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let dir = p.parent().unwrap_or(&p);
+        std::process::Command::new("xdg-open")
+            .arg(dir)
+            .spawn()
+            .map_err(|e| format!("无法打开文件管理器：{e}"))?;
+    }
+    Ok(())
+}
+
+/// 下载目录下生成不冲突的导出文件路径：base.md → base (2).md → …
+fn unique_export_path(base: &str) -> PathBuf {
+    let dir = dirs::download_dir()
+        .or_else(dirs::home_dir)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let mut candidate = dir.join(format!("{base}.md"));
+    let mut n = 2;
+    while candidate.exists() {
+        candidate = dir.join(format!("{base} ({n}).md"));
+        n += 1;
+    }
+    candidate
 }

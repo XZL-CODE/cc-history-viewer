@@ -162,3 +162,16 @@ pub struct IndexMeta {
     pub from_cache: bool,
     pub source_files: usize,
 }
+
+/// Prompt 导出结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportResult {
+    /// Markdown 预览（可能被截断，仅用于页面展示）
+    pub preview: String,
+    /// 实际写入的文件绝对路径；仅 write=true 时有值
+    pub path: Option<String>,
+    pub prompt_count: usize,
+    pub folder_count: usize,
+    pub day_count: usize,
+}

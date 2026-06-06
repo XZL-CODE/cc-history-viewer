@@ -115,3 +115,22 @@ export interface IndexMeta {
 }
 
 export type SortMode = "newest" | "oldest" | "longest";
+
+export type ExportGroupBy = "project" | "day" | "none";
+
+export interface ExportParams {
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  project: string | null; // null = 全部文件夹
+  includeCommands: boolean;
+  groupBy: ExportGroupBy;
+  write: boolean;
+}
+
+export interface ExportResult {
+  preview: string;
+  path: string | null;
+  promptCount: number;
+  folderCount: number;
+  dayCount: number;
+}

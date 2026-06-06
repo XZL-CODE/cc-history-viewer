@@ -5,6 +5,8 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AppStats,
   ConversationDetail,
+  ExportParams,
+  ExportResult,
   IndexMeta,
   ProjectInfo,
   PromptEntry,
@@ -52,6 +54,18 @@ export const api = {
   getIndexMeta: () => invoke<IndexMeta>("get_index_meta"),
 
   refreshIndex: () => invoke<IndexMeta>("refresh_index"),
+
+  buildExport: (p: ExportParams) =>
+    invoke<ExportResult>("build_prompt_export", {
+      startDate: p.startDate,
+      endDate: p.endDate,
+      project: p.project,
+      includeCommands: p.includeCommands,
+      groupBy: p.groupBy,
+      write: p.write,
+    }),
+
+  revealPath: (path: string) => invoke<void>("reveal_path", { path }),
 };
 
 /** 把后端返回的错误统一转成可读字符串 */

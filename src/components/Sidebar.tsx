@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";
-import { Folder, Home, Search } from "lucide-react";
+import { Download, Folder, Home, Search } from "lucide-react";
 import { useProjects } from "@/hooks/queries";
 import { useStore } from "@/store";
 import { cn, encodePath, formatNumber } from "@/lib/utils";
@@ -40,6 +40,21 @@ export function Sidebar() {
         >
           <Home size={16} />
           首页 · 概览
+        </NavLink>
+        <NavLink
+          to="/export"
+          onClick={() => setQuery("")}
+          className={({ isActive }) =>
+            cn(
+              "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+              isActive
+                ? "bg-accent/15 text-accent"
+                : "text-foreground hover:bg-surface-2"
+            )
+          }
+        >
+          <Download size={16} />
+          导出 Prompt
         </NavLink>
         <div className="relative">
           <Search

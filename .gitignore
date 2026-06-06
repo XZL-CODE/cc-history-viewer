@@ -21,3 +21,9 @@ settings.json
 
 # 索引缓存（实际写在系统应用数据目录，此处仅作保险）
 index_cache.json
+
+# 本机 Claude Code 配置（权限等，机器相关）
+.claude/
+
+# 个人文章 / 配图（不随仓库分发）
+文章/

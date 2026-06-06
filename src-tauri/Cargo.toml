@@ -1,6 +1,6 @@
 [package]
 name = "cc-history-viewer"
-version = "0.1.0"
+version = "0.2.0"
 description = "可视化本地 Claude Code 的历史对话与 Prompt"
 authors = ["xzl"]
 edition = "2021"

@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { SortMode } from "@/lib/types";
+import type { ExportGroupBy, SortMode } from "@/lib/types";
 import { useDebounce } from "./useDebounce";
 
 const FIVE_MIN = 5 * 60 * 1000;
@@ -68,6 +68,40 @@ export function useConversation(sessionId: string | null) {
     queryFn: () => api.getConversation(sessionId as string),
     enabled: !!sessionId,
     staleTime: FIVE_MIN,
+  });
+}
+
+/** 导出预览：仅生成统计与截断预览，不写文件。输入变化时自动重算。 */
+export function useExportPreview(params: {
+  startDate: string;
+  endDate: string;
+  project: string | null;
+  includeCommands: boolean;
+  groupBy: ExportGroupBy;
+  enabled: boolean;
+}) {
+  const { startDate, endDate, project, includeCommands, groupBy, enabled } =
+    params;
+  return useQuery({
+    queryKey: [
+      "export-preview",
+      startDate,
+      endDate,
+      project,
+      includeCommands,
+      groupBy,
+    ],
+    queryFn: () =>
+      api.buildExport({
+        startDate,
+        endDate,
+        project,
+        includeCommands,
+        groupBy,
+        write: false,
+      }),
+    enabled,
+    staleTime: 30 * 1000,
   });
 }
 
