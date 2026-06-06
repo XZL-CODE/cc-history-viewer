@@ -1,0 +1,58 @@
+README.md
+  s_13073c3078d769::t_53d2d8d281f3d7 80
+  s_13073c3078d769::t_18e62446d53f42 160
+  s_13073c3078d769::t_55c1c1eab9bc29 107
+src/lib/api.ts
+  s_13073c3078d769::t_4c1b64b8789b00 8-9
+  s_13073c3078d769::t_a7c9c2a296fb99 57-68
+src-tauri/src/export.rs
+  s_13073c3078d769::t_7e8662d91c9cbf 1-145,148-183,185-186,188-270
+  s_13073c3078d769::t_3b254716125455 146-147
+  s_13073c3078d769::t_3435f6fdf0bb0a 271-354
+  s_13073c3078d769::t_04b10415f8a651 184,187
+src/pages/Export.tsx
+  s_13073c3078d769::t_af4fdda7930cfe 38
+  s_13073c3078d769::t_30074d52adc502 2-37,39-315
+  s_13073c3078d769::t_b2c18f31b91c64 1
+src-tauri/tauri.conf.json
+  s_13073c3078d769::t_66723a3205a5b8 4
+src/App.tsx
+  s_13073c3078d769::t_72a5ff1ad0fa2c 7,15
+src-tauri/src/models.rs
+  s_13073c3078d769::t_54a176efa6884a 165-177
+src-tauri/src/commands.rs
+  s_13073c3078d769::t_6adc8a41043374 3,8
+  s_13073c3078d769::t_5bd2fc4e990257 198-303
+src-tauri/src/lib.rs
+  s_13073c3078d769::t_b4ad982c08669e 2
+  s_13073c3078d769::t_e40cea81ced47b 25-26
+src/components/Sidebar.tsx
+  s_13073c3078d769::t_6f74f8f967bd72 44-58
+package.json
+  s_13073c3078d769::t_c6660bf54f54a9 4
+src-tauri/Cargo.toml
+  s_13073c3078d769::t_bb105877eefba4 3
+.gitignore
+  s_13073c3078d769::t_ede9518de516e0 24-29
+src/lib/types.ts
+  s_13073c3078d769::t_862689c4c6baf8 118-136
+src/hooks/queries.ts
+  s_13073c3078d769::t_dc18cb99af94df 74-107
+  s_13073c3078d769::t_01a6195762ce3d 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "5131b3e86d6ff46eed15946cdb492a144334bec1",
+  "prompts": {},
+  "sessions": {
+    "s_13073c3078d769": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "014c5266-0263-4dce-8773-caa08b8ed0fb",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "MacBookPro <abc10086xzl@gmail.com>"
+    }
+  }
+}
