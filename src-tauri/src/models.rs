@@ -122,6 +122,8 @@ pub struct AppStats {
     pub by_weekday: Vec<WeekdayCount>,
     pub top_projects: Vec<ProjectCount>,
     pub cc_versions: Vec<String>,
+    /// Token 用量与成本统计（assistant 消息按 dedup_key 全局去重后聚合）
+    pub usage: UsageStats,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -161,6 +163,8 @@ pub struct IndexMeta {
     pub built_at: i64,
     pub from_cache: bool,
     pub source_files: usize,
+    /// 本次构建中重新解析的对话文件数（全部命中缓存 = 0）
+    pub reparsed_files: usize,
 }
 
 /// Prompt 导出结果
@@ -174,4 +178,117 @@ pub struct ExportResult {
     pub prompt_count: usize,
     pub folder_count: usize,
     pub day_count: usize,
+}
+
+/// 整段对话导出结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationExportResult {
+    /// Markdown 预览（前 12000 字符，超出截断）
+    pub preview: String,
+    /// 实际写入的文件绝对路径；仅 write=true 时有值
+    pub path: Option<String>,
+    pub message_count: usize,
+}
+
+// ----------------------------- 设置 -----------------------------
+
+/// 前端提交的设置内容（与配置文件 settings.json 的字段一致）
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SettingsInput {
+    /// Claude 数据目录（含 history.jsonl / projects / sessions）
+    pub claude_data_dir: String,
+    /// 可选：单独指定 history.jsonl 路径
+    pub history_file: String,
+    /// 可选：单独指定 projects 目录
+    pub projects_dir: String,
+    /// 可选：单独指定 sessions 目录
+    pub sessions_dir: String,
+}
+
+/// 设置视图：原始配置串 + 实际使用的配置文件路径 + 解析后的数据源路径
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsView {
+    pub claude_data_dir: String,
+    pub history_file: String,
+    pub projects_dir: String,
+    pub sessions_dir: String,
+    /// 实际使用（或将写入）的配置文件路径
+    pub config_path: String,
+    pub resolved: ResolvedPaths,
+}
+
+/// 解析后的数据源绝对路径及存在性
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedPaths {
+    pub history: String,
+    pub projects: String,
+    pub sessions: String,
+    pub history_exists: bool,
+    pub projects_exists: bool,
+    pub sessions_exists: bool,
+}
+
+// ----------------------------- Token 用量统计 -----------------------------
+
+/// Token 用量与成本统计（全局去重后）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageStats {
+    pub total_input: u64,
+    pub total_output: u64,
+    pub total_cache_read: u64,
+    pub total_cache_creation: u64,
+    /// 估算总成本（USD，仅含已知定价的模型）
+    pub est_cost_usd: f64,
+    /// 未知定价模型贡献的 token 总量（四类合计）
+    pub unknown_model_tokens: u64,
+    /// 去重后的 assistant 消息条数
+    pub assistant_messages: usize,
+    pub by_model: Vec<ModelUsage>,
+    pub by_day: Vec<DayUsage>,
+    pub by_project: Vec<ProjectUsage>,
+}
+
+/// 按模型聚合的用量
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelUsage {
+    pub model: String,
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_creation: u64,
+    pub messages: usize,
+    /// 估算成本；未知定价的模型为 None
+    pub est_cost_usd: Option<f64>,
+}
+
+/// 按天聚合的用量（Local 时区）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DayUsage {
+    /// YYYY-MM-DD
+    pub day: String,
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_creation: u64,
+    pub est_cost_usd: f64,
+}
+
+/// 按项目聚合的用量（取成本前 8）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectUsage {
+    pub path: String,
+    pub name: String,
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_creation: u64,
+    pub est_cost_usd: f64,
 }

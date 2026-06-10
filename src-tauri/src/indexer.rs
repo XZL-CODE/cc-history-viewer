@@ -1,7 +1,9 @@
 //! 索引构建：扫描数据源、合并去重 prompt、聚合项目、计算统计、磁盘缓存。
+//! 缓存按「文件粒度」存解析结果（CacheV2）：单个 jsonl 变化只重解析该文件。
 
 use crate::models::*;
 use crate::parser::{self, ConvFileResult, RawPrompt};
+use crate::pricing;
 use crate::state::DataPaths;
 use chrono::{Datelike, Local, TimeZone, Timelike};
 use rayon::prelude::*;
@@ -14,9 +16,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// 同一文本在此时间窗内（毫秒）视为同一条 prompt，用于跨数据源去重
 const DEDUP_WINDOW_MS: i64 = 5 * 60 * 1000;
 
-/// 构建好的全量索引（同时作为磁盘缓存的结构）
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+/// 缓存格式版本；结构或解析规则变化时递增，旧缓存自动失效
+/// （v3：剥离 local-command-caveat 标签、压缩图片占位符）
+const CACHE_VERSION: u32 = 3;
+
+/// 构建好的全量索引（仅驻留内存；磁盘缓存见 CacheV2）
 pub struct AppIndex {
     pub prompts: Vec<PromptEntry>,
     pub projects: Vec<ProjectInfo>,
@@ -24,73 +28,187 @@ pub struct AppIndex {
     pub stats: AppStats,
     /// sessionId -> 对话文件绝对路径
     pub session_files: HashMap<String, String>,
-    /// 数据源文件 -> mtime(ms)，用于缓存有效性校验
-    pub source_fingerprint: HashMap<String, i64>,
+    /// 数据源文件数（history + 对话文件）
+    pub source_files: usize,
     pub built_at: i64,
-    /// 是否来自缓存（不参与序列化）
-    #[serde(skip)]
+    /// 本次构建是否完全复用缓存（history 与全部对话文件均未重解析）
     pub from_cache: bool,
+    /// 本次重解析的对话文件数（全缓存命中 = 0）
+    pub reparsed_files: usize,
+}
+
+// ----------------------------- 磁盘缓存（v2） -----------------------------
+
+/// 文件级磁盘缓存：history 解析结果 + 每个对话文件的解析结果
+#[derive(Serialize, Deserialize)]
+struct CacheV2 {
+    version: u32,
+    /// history.jsonl 的 mtime(ms)；不一致则重解析 history
+    history_mtime: i64,
+    history_prompts: Vec<RawPrompt>,
+    /// 对话文件绝对路径 -> 文件级缓存
+    files: HashMap<String, FileCache>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct FileCache {
+    /// 文件 mtime(ms)；不一致则重解析该文件
+    mtime: i64,
+    /// 原始解析结果（未经 resolve_missing_projects 回填，保证缓存与全量重建一致）
+    conv: ConvFileResult,
+}
+
+impl CacheV2 {
+    /// 空缓存：history_mtime 取 -1，保证首次构建必然重解析
+    fn empty() -> Self {
+        Self {
+            version: CACHE_VERSION,
+            history_mtime: -1,
+            history_prompts: Vec::new(),
+            files: HashMap::new(),
+        }
+    }
+}
+
+/// 读缓存：文件缺失 / 解析失败 / 版本不符 都视为无缓存
+fn read_cache_v2(path: &Path) -> Option<CacheV2> {
+    let text = fs::read_to_string(path).ok()?;
+    let c: CacheV2 = serde_json::from_str(&text).ok()?;
+    if c.version != CACHE_VERSION {
+        return None;
+    }
+    Some(c)
+}
+
+fn write_cache_v2(cache_path: &Path, cache: &CacheV2) {
+    if let Some(parent) = cache_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(json) = serde_json::to_string(cache) {
+        let _ = fs::write(cache_path, json);
+    }
 }
 
 // ----------------------------- 公共入口 -----------------------------
 
-/// 优先读缓存；数据源有变化则重建。
+/// 增量构建：逐文件对比 mtime，仅重解析新增 / 变化的文件；其余复用缓存。
 pub fn load_or_build(paths: &DataPaths, cache_path: Option<&Path>) -> AppIndex {
     let conv_files = collect_jsonl_files(&paths.projects);
-    let fingerprint = compute_fingerprint(&paths.history, &conv_files);
+    let mut old = cache_path
+        .and_then(read_cache_v2)
+        .unwrap_or_else(CacheV2::empty);
 
-    if let Some(cp) = cache_path {
-        if let Ok(text) = fs::read_to_string(cp) {
-            if let Ok(mut cached) = serde_json::from_str::<AppIndex>(&text) {
-                if cached.source_fingerprint == fingerprint {
-                    cached.from_cache = true;
-                    return cached;
-                }
+    // history.jsonl：mtime 一致则复用缓存的解析结果
+    let history_mtime = file_mtime_ms(&paths.history);
+    let history_changed = old.history_mtime != history_mtime;
+    let history_prompts = if history_changed {
+        parser::parse_history(&paths.history)
+    } else {
+        std::mem::take(&mut old.history_prompts)
+    };
+
+    // 对话文件：mtime 一致 → 复用；新增 / 变化 → 待重解析
+    let mut files: HashMap<String, FileCache> = HashMap::with_capacity(conv_files.len());
+    let mut to_parse: Vec<(String, i64, PathBuf)> = Vec::new();
+    for f in conv_files {
+        let key = f.to_string_lossy().to_string();
+        let mtime = file_mtime_ms(&f);
+        match old.files.remove(&key) {
+            Some(fc) if fc.mtime == mtime => {
+                files.insert(key, fc);
             }
+            _ => to_parse.push((key, mtime, f)),
+        }
+    }
+    // old.files 中剩余条目对应磁盘已删除的文件，直接丢弃
+    let removed_any = !old.files.is_empty();
+
+    let reparsed_files = to_parse.len();
+    for (key, mtime, conv) in parse_files_par(to_parse) {
+        files.insert(key, FileCache { mtime, conv });
+    }
+
+    // 完全无重解析（history 也没变）才算「来自缓存」
+    let from_cache = !history_changed && reparsed_files == 0;
+
+    let cache = CacheV2 {
+        version: CACHE_VERSION,
+        history_mtime,
+        history_prompts,
+        files,
+    };
+    // 内容有变化才写回，避免每次启动都重写大文件
+    if history_changed || reparsed_files > 0 || removed_any {
+        if let Some(cp) = cache_path {
+            write_cache_v2(cp, &cache);
         }
     }
 
-    let idx = build(paths, conv_files, fingerprint);
-    if let Some(cp) = cache_path {
-        write_cache(cp, &idx);
-    }
-    idx
+    assemble_index(paths, cache, from_cache, reparsed_files)
 }
 
-/// 强制重建并刷新缓存。
+/// 强制全量重建：忽略缓存重解析全部文件，并写回最新 CacheV2。
 pub fn build_and_cache(paths: &DataPaths, cache_path: Option<&Path>) -> AppIndex {
     let conv_files = collect_jsonl_files(&paths.projects);
-    let fingerprint = compute_fingerprint(&paths.history, &conv_files);
-    let idx = build(paths, conv_files, fingerprint);
-    if let Some(cp) = cache_path {
-        write_cache(cp, &idx);
+    let history_mtime = file_mtime_ms(&paths.history);
+    let history_prompts = parser::parse_history(&paths.history);
+
+    let to_parse: Vec<(String, i64, PathBuf)> = conv_files
+        .into_iter()
+        .map(|f| (f.to_string_lossy().to_string(), file_mtime_ms(&f), f))
+        .collect();
+    let reparsed_files = to_parse.len();
+
+    let mut files: HashMap<String, FileCache> = HashMap::with_capacity(reparsed_files);
+    for (key, mtime, conv) in parse_files_par(to_parse) {
+        files.insert(key, FileCache { mtime, conv });
     }
-    idx
+
+    let cache = CacheV2 {
+        version: CACHE_VERSION,
+        history_mtime,
+        history_prompts,
+        files,
+    };
+    if let Some(cp) = cache_path {
+        write_cache_v2(cp, &cache);
+    }
+
+    assemble_index(paths, cache, false, reparsed_files)
+}
+
+/// 并行解析一批对话文件；解析失败（不可读等）的文件直接丢弃，下次仍会重试。
+fn parse_files_par(items: Vec<(String, i64, PathBuf)>) -> Vec<(String, i64, ConvFileResult)> {
+    items
+        .into_par_iter()
+        .filter_map(|(key, mtime, path)| {
+            parser::parse_conversation_file(&path).map(|conv| (key, mtime, conv))
+        })
+        .collect()
 }
 
 // ----------------------------- 构建主流程 -----------------------------
 
-fn build(
+/// 用「复用 + 新解析」的全量解析结果跑后续构建步骤。
+/// 注意：缓存写回发生在本函数之前，缓存中保存的是未回填 project 的原始解析结果。
+fn assemble_index(
     paths: &DataPaths,
-    conv_files: Vec<PathBuf>,
-    fingerprint: HashMap<String, i64>,
+    cache: CacheV2,
+    from_cache: bool,
+    reparsed_files: usize,
 ) -> AppIndex {
-    // 1. history.jsonl
-    let history_prompts = parser::parse_history(&paths.history);
+    let source_files = cache.files.len() + usize::from(paths.history.exists());
+    let history_prompts = cache.history_prompts;
+    let mut conv_results: Vec<ConvFileResult> =
+        cache.files.into_values().map(|fc| fc.conv).collect();
 
-    // 2. 并行解析全部对话文件
-    let mut conv_results: Vec<ConvFileResult> = conv_files
-        .par_iter()
-        .filter_map(|p| parser::parse_conversation_file(p))
-        .collect();
-
-    // 3. cwd 缺失的会话用「真实路径字典」兜底解码目录名
+    // 1. cwd 缺失的会话用「真实路径字典」兜底解码目录名
     resolve_missing_projects(&history_prompts, &mut conv_results);
 
-    // 4. 合并 + 去重 prompt
+    // 2. 合并 + 去重 prompt
     let prompts = merge_prompts(history_prompts, &conv_results);
 
-    // 5. sessionId -> 文件路径
+    // 3. sessionId -> 文件路径
     let mut session_files = HashMap::new();
     for cr in &conv_results {
         session_files.insert(
@@ -99,13 +217,13 @@ fn build(
         );
     }
 
-    // 6. 项目聚合
+    // 4. 项目聚合
     let projects = aggregate_projects(&prompts, &conv_results);
 
-    // 7. 会话摘要
+    // 5. 会话摘要
     let sessions = build_sessions(&conv_results);
 
-    // 8. 统计
+    // 6. 统计
     let stats = compute_stats(&prompts, &conv_results, &paths.sessions, projects.len());
 
     AppIndex {
@@ -114,9 +232,10 @@ fn build(
         sessions,
         stats,
         session_files,
-        source_fingerprint: fingerprint,
+        source_files,
         built_at: now_ms(),
-        from_cache: false,
+        from_cache,
+        reparsed_files,
     }
 }
 
@@ -160,12 +279,11 @@ fn resolve_missing_projects(history: &[RawPrompt], conv: &mut [ConvFileResult]) 
     }
 }
 
-/// 兜底解码：把 '-' 当作 '/'（中文路径无法精确还原，仅极少数缺失 cwd 的旧会话会用到）
+/// 兜底解码：字典反查失败时，原样保留编码目录名。
+/// 编码规则把 '/' 与目录名里本来的 '-' 都写成 '-'，无法区分
+/// （盲目替换会把 my-project 错还原成 my/project），因此不再做 '-' → '/' 替换。
 fn naive_decode(encoded: &str) -> String {
-    if encoded.is_empty() {
-        return encoded.to_string();
-    }
-    encoded.replace('-', "/")
+    encoded.to_string()
 }
 
 // ----------------------------- prompt 合并去重 -----------------------------
@@ -337,11 +455,8 @@ fn build_sessions(conv: &[ConvFileResult]) -> Vec<SessionSummary> {
         .map(|cr| SessionSummary {
             session_id: cr.session_id.clone(),
             project: cr.project.clone().unwrap_or_default(),
-            title: if cr.first_prompt.is_empty() {
-                "（无 user 消息）".to_string()
-            } else {
-                cr.first_prompt.clone()
-            },
+            // 直接用首条 user prompt（可为空串），空标题的兜底展示由前端负责
+            title: cr.first_prompt.clone(),
             started_at: cr.started_at,
             ended_at: cr.ended_at,
             message_count: cr.message_count,
@@ -465,6 +580,144 @@ fn compute_stats(
         by_weekday: by_weekday_vec,
         top_projects,
         cc_versions,
+        usage: compute_usage(conv),
+    }
+}
+
+/// Token 用量统计：所有文件的 UsageEntry 按 dedup_key 全局去重后聚合。
+/// resume / fork 会把旧 assistant 行复制进新文件，不去重会大幅重复计数。
+fn compute_usage(conv: &[ConvFileResult]) -> UsageStats {
+    #[derive(Default)]
+    struct Agg {
+        input: u64,
+        output: u64,
+        cache_read: u64,
+        cache_creation: u64,
+        messages: usize,
+        cost: f64,
+    }
+
+    let mut seen: HashSet<&str> = HashSet::new();
+    let mut total_input = 0u64;
+    let mut total_output = 0u64;
+    let mut total_cache_read = 0u64;
+    let mut total_cache_creation = 0u64;
+    let mut est_cost_usd = 0f64;
+    let mut unknown_model_tokens = 0u64;
+    let mut assistant_messages = 0usize;
+    let mut by_model: HashMap<String, Agg> = HashMap::new();
+    let mut by_day: HashMap<String, Agg> = HashMap::new();
+    let mut by_project: HashMap<String, Agg> = HashMap::new();
+
+    for cr in conv {
+        let project = cr.project.as_deref().unwrap_or("");
+        for e in &cr.usage_entries {
+            if !seen.insert(e.dedup_key.as_str()) {
+                continue;
+            }
+            let cost =
+                pricing::estimate_cost(&e.model, e.input, e.output, e.cache_read, e.cache_creation);
+            assistant_messages += 1;
+            total_input += e.input;
+            total_output += e.output;
+            total_cache_read += e.cache_read;
+            total_cache_creation += e.cache_creation;
+            match cost {
+                Some(c) => est_cost_usd += c,
+                None => {
+                    unknown_model_tokens += e.input + e.output + e.cache_read + e.cache_creation
+                }
+            }
+            let add = |agg: &mut Agg| {
+                agg.input += e.input;
+                agg.output += e.output;
+                agg.cache_read += e.cache_read;
+                agg.cache_creation += e.cache_creation;
+                agg.messages += 1;
+                agg.cost += cost.unwrap_or(0.0);
+            };
+            add(by_model.entry(e.model.clone()).or_default());
+            if let Some(dt) = Local.timestamp_millis_opt(e.timestamp).single() {
+                add(by_day.entry(dt.format("%Y-%m-%d").to_string()).or_default());
+            }
+            if !project.is_empty() {
+                add(by_project.entry(project.to_string()).or_default());
+            }
+        }
+    }
+
+    let mut by_model_vec: Vec<ModelUsage> = by_model
+        .into_iter()
+        .map(|(model, a)| {
+            // 成本按聚合量重新估算（与逐条累加等价：公式是线性的）；未知模型为 None
+            let est =
+                pricing::estimate_cost(&model, a.input, a.output, a.cache_read, a.cache_creation);
+            ModelUsage {
+                model,
+                input: a.input,
+                output: a.output,
+                cache_read: a.cache_read,
+                cache_creation: a.cache_creation,
+                messages: a.messages,
+                est_cost_usd: est,
+            }
+        })
+        .collect();
+    // 已知成本按成本降序；未知成本(None)排最后，按 token 总量降序
+    by_model_vec.sort_by(|a, b| match (a.est_cost_usd, b.est_cost_usd) {
+        (Some(x), Some(y)) => y.partial_cmp(&x).unwrap_or(std::cmp::Ordering::Equal),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => {
+            let ta = a.input + a.output + a.cache_read + a.cache_creation;
+            let tb = b.input + b.output + b.cache_read + b.cache_creation;
+            tb.cmp(&ta)
+        }
+    });
+
+    let mut by_day_vec: Vec<DayUsage> = by_day
+        .into_iter()
+        .map(|(day, a)| DayUsage {
+            day,
+            input: a.input,
+            output: a.output,
+            cache_read: a.cache_read,
+            cache_creation: a.cache_creation,
+            est_cost_usd: a.cost,
+        })
+        .collect();
+    by_day_vec.sort_by(|a, b| a.day.cmp(&b.day));
+
+    let mut by_project_vec: Vec<ProjectUsage> = by_project
+        .into_iter()
+        .map(|(path, a)| ProjectUsage {
+            name: project_name(&path),
+            path,
+            input: a.input,
+            output: a.output,
+            cache_read: a.cache_read,
+            cache_creation: a.cache_creation,
+            est_cost_usd: a.cost,
+        })
+        .collect();
+    by_project_vec.sort_by(|a, b| {
+        b.est_cost_usd
+            .partial_cmp(&a.est_cost_usd)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    by_project_vec.truncate(8);
+
+    UsageStats {
+        total_input,
+        total_output,
+        total_cache_read,
+        total_cache_creation,
+        est_cost_usd,
+        unknown_model_tokens,
+        assistant_messages,
+        by_model: by_model_vec,
+        by_day: by_day_vec,
+        by_project: by_project_vec,
     }
 }
 
@@ -498,6 +751,13 @@ fn collect_session_versions(sessions_dir: &Path, versions: &mut HashSet<String>)
 
 // ----------------------------- 搜索 -----------------------------
 
+/// 大小写折叠：to_lowercase() 可能展开成多个码点（如 'İ' → "i̇"），
+/// 这里只取第一个码点做 1:1 映射，保证折叠后的 char 序列长度与原文一致，
+/// 命中区间（char 索引）才能直接套用到原始文本上做高亮。
+fn fold_char(c: char) -> char {
+    c.to_lowercase().next().unwrap_or(c)
+}
+
 /// 子串 + 大小写不敏感 + 空格分词（多关键词 AND）的模糊搜索。
 pub fn search(
     prompts: &[PromptEntry],
@@ -507,7 +767,7 @@ pub fn search(
 ) -> Vec<SearchResult> {
     let tokens: Vec<Vec<char>> = query
         .split_whitespace()
-        .map(|t| t.chars().map(|c| c.to_ascii_lowercase()).collect::<Vec<char>>())
+        .map(|t| t.chars().map(fold_char).collect::<Vec<char>>())
         .filter(|t| !t.is_empty())
         .collect();
     if tokens.is_empty() {
@@ -524,7 +784,7 @@ pub fn search(
         if !include_commands && p.is_command {
             continue;
         }
-        let lower: Vec<char> = p.text.chars().map(|c| c.to_ascii_lowercase()).collect();
+        let lower: Vec<char> = p.text.chars().map(fold_char).collect();
         let mut ranges: Vec<[usize; 2]> = Vec::new();
         let mut matched_all = true;
         for tok in &tokens {
@@ -605,20 +865,6 @@ fn collect_jsonl_files(dir: &Path) -> Vec<PathBuf> {
     files
 }
 
-fn compute_fingerprint(history: &Path, conv_files: &[PathBuf]) -> HashMap<String, i64> {
-    let mut fp = HashMap::new();
-    if history.exists() {
-        fp.insert(
-            history.to_string_lossy().to_string(),
-            file_mtime_ms(history),
-        );
-    }
-    for f in conv_files {
-        fp.insert(f.to_string_lossy().to_string(), file_mtime_ms(f));
-    }
-    fp
-}
-
 fn file_mtime_ms(p: &Path) -> i64 {
     fs::metadata(p)
         .ok()
@@ -628,18 +874,213 @@ fn file_mtime_ms(p: &Path) -> i64 {
         .unwrap_or(0)
 }
 
-fn write_cache(cache_path: &Path, idx: &AppIndex) {
-    if let Some(parent) = cache_path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    if let Ok(json) = serde_json::to_string(idx) {
-        let _ = fs::write(cache_path, json);
-    }
-}
-
 pub fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::UsageEntry;
+
+    fn rp(
+        text: &str,
+        project: &str,
+        ts: i64,
+        from_history: bool,
+        session: Option<&str>,
+    ) -> RawPrompt {
+        RawPrompt {
+            text: text.to_string(),
+            project: project.to_string(),
+            timestamp: ts,
+            session_id: session.map(str::to_string),
+            git_branch: None,
+            pasted_count: 0,
+            from_history,
+        }
+    }
+
+    fn cf(
+        session: &str,
+        project: Option<&str>,
+        prompts: Vec<RawPrompt>,
+        usage: Vec<UsageEntry>,
+    ) -> ConvFileResult {
+        ConvFileResult {
+            path: PathBuf::from(format!("/tmp/{session}.jsonl")),
+            session_id: session.to_string(),
+            project: project.map(str::to_string),
+            git_branch: None,
+            version: None,
+            started_at: 0,
+            ended_at: 0,
+            message_count: 0,
+            first_prompt: String::new(),
+            user_prompts: prompts,
+            usage_entries: usage,
+        }
+    }
+
+    fn ue(key: &str, model: &str, ts: i64, input: u64, output: u64) -> UsageEntry {
+        UsageEntry {
+            dedup_key: key.to_string(),
+            model: model.to_string(),
+            timestamp: ts,
+            input,
+            output,
+            cache_read: 0,
+            cache_creation: 0,
+        }
+    }
+
+    fn pe(text: &str) -> PromptEntry {
+        PromptEntry {
+            id: text.to_string(),
+            text: text.to_string(),
+            project: "/p".to_string(),
+            timestamp: 0,
+            source: "history".to_string(),
+            session_id: None,
+            git_branch: None,
+            is_command: false,
+            pasted_count: 0,
+            char_count: text.chars().count(),
+        }
+    }
+
+    // ---------- merge_prompts ----------
+
+    #[test]
+    fn merge_same_text_within_window_becomes_both() {
+        let t0 = 1_700_000_000_000i64;
+        let history = vec![rp("跑测试", "/p/a", t0, true, None)];
+        let conv = vec![cf(
+            "s1",
+            Some("/p/a"),
+            vec![rp("跑测试", "/p/a", t0 + 60_000, false, Some("s1"))],
+            vec![],
+        )];
+        let entries = merge_prompts(history, &conv);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].source, "both");
+        assert_eq!(entries[0].session_id.as_deref(), Some("s1"));
+        assert!(!entries[0].is_command);
+    }
+
+    #[test]
+    fn merge_same_text_beyond_window_stays_separate() {
+        let t0 = 1_700_000_000_000i64;
+        let history = vec![rp("跑测试", "/p/a", t0, true, None)];
+        let conv = vec![cf(
+            "s1",
+            Some("/p/a"),
+            vec![rp(
+                "跑测试",
+                "/p/a",
+                t0 + DEDUP_WINDOW_MS + 1,
+                false,
+                Some("s1"),
+            )],
+            vec![],
+        )];
+        let entries = merge_prompts(history, &conv);
+        assert_eq!(entries.len(), 2);
+        let sources: HashSet<&str> = entries.iter().map(|e| e.source.as_str()).collect();
+        assert!(sources.contains("history"));
+        assert!(sources.contains("conversation"));
+    }
+
+    #[test]
+    fn merge_detects_command() {
+        let entries = merge_prompts(
+            vec![rp("/clear", "/p/a", 1_000, true, None)],
+            &[],
+        );
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].is_command);
+    }
+
+    // ---------- search ----------
+
+    #[test]
+    fn search_multi_keyword_and() {
+        let prompts = vec![pe("foo something bar"), pe("foo only")];
+        let r = search(&prompts, "foo bar", None, true);
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].entry.text, "foo something bar");
+    }
+
+    #[test]
+    fn search_case_insensitive_non_ascii() {
+        let prompts = vec![pe("Grab a café latte")];
+        let r = search(&prompts, "CAFÉ", None, true);
+        assert_eq!(r.len(), 1, "大写 É 应命中小写 é");
+        // "café" 起于 char 索引 7（高亮区间按 char 索引计）
+        assert_eq!(r[0].match_ranges, vec![[7, 11]]);
+    }
+
+    #[test]
+    fn search_merges_overlapping_ranges() {
+        let prompts = vec![pe("abcdx")];
+        let r = search(&prompts, "abc bcd", None, true);
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].match_ranges, vec![[0, 4]], "重叠区间应合并");
+    }
+
+    // ---------- version_cmp / naive_decode ----------
+
+    #[test]
+    fn version_cmp_numeric_parts() {
+        use std::cmp::Ordering;
+        assert_eq!(version_cmp("2.1.10", "2.1.9"), Ordering::Greater);
+        assert_eq!(version_cmp("2.0.0", "2.0.0"), Ordering::Equal);
+        assert_eq!(version_cmp("1.9.9", "2.0.0"), Ordering::Less);
+    }
+
+    #[test]
+    fn naive_decode_keeps_encoded_name_as_is() {
+        // 含连字符的目录名不能被错误还原成路径分隔符
+        assert_eq!(naive_decode("-Users-xzl-my-project"), "-Users-xzl-my-project");
+        assert_eq!(naive_decode(""), "");
+    }
+
+    // ---------- compute_usage ----------
+
+    #[test]
+    fn usage_dedup_across_files_and_aggregation() {
+        let ts = Local
+            .with_ymd_and_hms(2026, 3, 1, 12, 0, 0)
+            .unwrap()
+            .timestamp_millis();
+        // opus 4.1：15/75；1M input = 15 USD
+        let e1 = ue("msg_1", "claude-opus-4-1-20250805", ts, 1_000_000, 0);
+        let e1_copy = e1.clone(); // 模拟 resume 把旧行复制进另一个文件
+        let e2 = ue("msg_2", "unknown-model-x", ts, 10, 20);
+        let conv = vec![
+            cf("s1", Some("/p/a"), vec![], vec![e1]),
+            cf("s2", Some("/p/b"), vec![], vec![e1_copy, e2]),
+        ];
+        let u = compute_usage(&conv);
+        assert_eq!(u.assistant_messages, 2, "重复 dedup_key 只记一次");
+        assert_eq!(u.total_input, 1_000_010);
+        assert_eq!(u.total_output, 20);
+        assert_eq!(u.unknown_model_tokens, 30);
+        assert!((u.est_cost_usd - 15.0).abs() < 1e-9);
+        // by_model：已知成本在前，未知模型 est_cost_usd 为 None 且排最后
+        assert_eq!(u.by_model.len(), 2);
+        assert_eq!(u.by_model[0].model, "claude-opus-4-1-20250805");
+        assert!(u.by_model[1].est_cost_usd.is_none());
+        // by_day：同一天聚成一条
+        assert_eq!(u.by_day.len(), 1);
+        assert!((u.by_day[0].est_cost_usd - 15.0).abs() < 1e-9);
+        // by_project：msg_1 只归属第一次出现的文件所在项目 /p/a
+        let pa = u.by_project.iter().find(|p| p.path == "/p/a").unwrap();
+        assert!((pa.est_cost_usd - 15.0).abs() < 1e-9);
+        let pb = u.by_project.iter().find(|p| p.path == "/p/b").unwrap();
+        assert_eq!(pb.input, 10);
+    }
 }

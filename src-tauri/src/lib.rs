@@ -1,9 +1,11 @@
-mod commands;
-mod export;
-mod indexer;
-mod models;
-mod parser;
-mod state;
+// 模块声明为 pub：tests/ 下的集成测试（golden 测试）需要访问 parser 等模块。
+pub mod commands;
+pub mod export;
+pub mod indexer;
+pub mod models;
+pub mod parser;
+pub mod pricing;
+pub mod state;
 
 use state::AppState;
 
@@ -22,7 +24,10 @@ pub fn run() {
             commands::get_conversation,
             commands::get_index_meta,
             commands::refresh_index,
+            commands::get_settings,
+            commands::set_settings,
             commands::build_prompt_export,
+            commands::export_conversation,
             commands::reveal_path,
         ])
         .run(tauri::generate_context!())
