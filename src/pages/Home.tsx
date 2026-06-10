@@ -1,8 +1,10 @@
+import { useMemo } from "react";
 import { AlertTriangle } from "lucide-react";
 import { useStore } from "@/store";
 import { useIndexMeta, useRecentPrompts, useStats } from "@/hooks/queries";
 import { StatsOverview } from "@/components/StatsOverview";
 import { ActivityChart, HourChart, ProjectChart } from "@/components/Charts";
+import { TokenStats } from "@/components/TokenStats";
 import { PromptList } from "@/components/PromptList";
 import {
   Card,
@@ -13,6 +15,7 @@ import {
   Skeleton,
 } from "@/components/ui";
 import { errMessage } from "@/lib/api";
+import { useT } from "@/i18n";
 import { absoluteTime, formatNumber } from "@/lib/utils";
 
 function StatsSkeleton() {
@@ -37,22 +40,42 @@ function ListSkeleton() {
 
 export function Home() {
   const { includeCommands } = useStore();
+  const t = useT();
   const statsQ = useStats();
   const metaQ = useIndexMeta();
   const recentQ = useRecentPrompts(24, includeCommands);
 
+  // memo 保持引用稳定：PromptList 以 items 引用变化作为重置分批的信号
+  const recentItems = useMemo(
+    () => (recentQ.data ?? []).map((entry) => ({ entry })),
+    [recentQ.data]
+  );
+
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-6 py-6">
       <div>
-        <h1 className="text-xl font-semibold text-foreground">概览</h1>
+        <h1 className="text-xl font-semibold text-foreground">
+          {t("overviewTitle")}
+        </h1>
         <p className="mt-0.5 text-xs text-muted">
           {metaQ.data
-            ? `索引含 ${formatNumber(
-                metaQ.data.sourceFiles
-              )} 个数据文件 · 构建于 ${absoluteTime(metaQ.data.builtAt)} · ${
-                metaQ.data.fromCache ? "读取自缓存" : "本次重新扫描"
-              }`
-            : "正在读取本地 Claude Code 数据…"}
+            ? [
+                t("indexMetaSummary", {
+                  files: formatNumber(metaQ.data.sourceFiles),
+                  time: absoluteTime(metaQ.data.builtAt),
+                }),
+                metaQ.data.fromCache
+                  ? t("indexFromCache")
+                  : t("indexFreshScan"),
+                ...(metaQ.data.reparsedFiles > 0
+                  ? [
+                      t("indexReparsedFiles", {
+                        count: formatNumber(metaQ.data.reparsedFiles),
+                      }),
+                    ]
+                  : []),
+              ].join(" · ")
+            : t("loadingLocalData")}
         </p>
       </div>
 
@@ -61,10 +84,8 @@ export function Home() {
       ) : statsQ.isError ? (
         <CenterMessage
           icon={<AlertTriangle size={28} />}
-          title="无法加载数据"
-          hint={`${errMessage(
-            statsQ.error
-          )}。请确认通过 pnpm tauri dev 启动应用，且 ~/.claude 目录存在。`}
+          title={t("cannotLoadData")}
+          hint={t("cannotLoadDataHint", { error: errMessage(statsQ.error) })}
         />
       ) : statsQ.data ? (
         <>
@@ -73,7 +94,7 @@ export function Home() {
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>每日活跃度</CardTitle>
+                <CardTitle>{t("dailyActivity")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <ActivityChart data={statsQ.data.byDay} />
@@ -81,7 +102,7 @@ export function Home() {
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>24 小时分布</CardTitle>
+                <CardTitle>{t("hourlyDistribution")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <HourChart data={statsQ.data.byHour} />
@@ -91,32 +112,31 @@ export function Home() {
 
           <Card>
             <CardHeader>
-              <CardTitle>最活跃的文件夹 Top 8</CardTitle>
+              <CardTitle>{t("topActiveFolders")}</CardTitle>
             </CardHeader>
             <CardContent>
               <ProjectChart data={statsQ.data.topProjects} />
             </CardContent>
           </Card>
+
+          <TokenStats usage={statsQ.data.usage} />
         </>
       ) : null}
 
       <div>
         <h2 className="mb-3 text-sm font-semibold text-foreground">
-          最近的 Prompt
+          {t("recentPrompts")}
         </h2>
         {recentQ.isLoading ? (
           <ListSkeleton />
         ) : recentQ.isError ? (
           <p className="text-xs text-muted">
-            加载失败：{errMessage(recentQ.error)}
+            {t("loadFailedWithError", { error: errMessage(recentQ.error) })}
           </p>
-        ) : recentQ.data && recentQ.data.length > 0 ? (
-          <PromptList
-            items={recentQ.data.map((entry) => ({ entry }))}
-            showProject
-          />
+        ) : recentItems.length > 0 ? (
+          <PromptList items={recentItems} showProject />
         ) : (
-          <p className="text-xs text-muted">暂无 prompt 记录。</p>
+          <p className="text-xs text-muted">{t("noPromptRecords")}</p>
         )}
       </div>
     </div>

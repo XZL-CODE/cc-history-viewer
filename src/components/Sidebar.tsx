@@ -3,12 +3,14 @@ import { NavLink } from "react-router-dom";
 import { Download, Folder, Home, Search } from "lucide-react";
 import { useProjects } from "@/hooks/queries";
 import { useStore } from "@/store";
+import { useT } from "@/i18n";
 import { cn, encodePath, formatNumber } from "@/lib/utils";
 import { Skeleton } from "./ui";
 
 export function Sidebar() {
   const { data: projects, isLoading } = useProjects();
   const { setQuery } = useStore();
+  const t = useT();
   const [filter, setFilter] = useState("");
 
   const filtered = useMemo(() => {
@@ -39,7 +41,7 @@ export function Sidebar() {
           }
         >
           <Home size={16} />
-          首页 · 概览
+          {t("navHome")}
         </NavLink>
         <NavLink
           to="/export"
@@ -54,7 +56,7 @@ export function Sidebar() {
           }
         >
           <Download size={16} />
-          导出 Prompt
+          {t("navExport")}
         </NavLink>
         <div className="relative">
           <Search
@@ -64,14 +66,14 @@ export function Sidebar() {
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="筛选文件夹…"
+            placeholder={t("filterFoldersPlaceholder")}
             className="h-8 w-full rounded-lg border border-border bg-background pl-8 pr-2 text-xs text-foreground outline-none transition-colors placeholder:text-muted focus:border-accent"
           />
         </div>
       </div>
 
       <div className="flex shrink-0 items-center justify-between px-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
-        <span>文件夹</span>
+        <span>{t("foldersSection")}</span>
         <span>{formatNumber(filtered.length)}</span>
       </div>
 
@@ -84,7 +86,7 @@ export function Sidebar() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="px-3 py-8 text-center text-xs text-muted">
-            没有匹配的文件夹
+            {t("noMatchingFolders")}
           </div>
         ) : (
           filtered.map((p) => (
@@ -106,8 +108,14 @@ export function Sidebar() {
                 </span>
               </div>
               <div className="mt-0.5 flex items-center gap-1.5 pl-6 text-[11px] text-muted">
-                <span>{formatNumber(p.promptCount)} prompt</span>
-                {p.hasConversations && <span>· {p.sessionCount} 会话</span>}
+                <span>
+                  {t("promptCountLabel", { count: formatNumber(p.promptCount) })}
+                </span>
+                {p.hasConversations && (
+                  <span>
+                    · {t("sessionCountLabel", { count: p.sessionCount })}
+                  </span>
+                )}
               </div>
             </NavLink>
           ))

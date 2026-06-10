@@ -33,6 +33,12 @@
   --warning: #f0a44a;
 }
 
+/* 长列表优化：离屏内容跳过渲染，预估高度避免滚动条跳动 */
+@utility cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);

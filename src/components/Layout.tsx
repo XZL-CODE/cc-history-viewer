@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Layers, RefreshCw, Terminal } from "lucide-react";
+import { Languages, Layers, RefreshCw, Settings, Terminal } from "lucide-react";
 import { useStore } from "@/store";
+import { useLang, useT } from "@/i18n";
 import { api } from "@/lib/api";
 import { cn, decodePath } from "@/lib/utils";
 import { SearchBar } from "./SearchBar";
+import { SettingsDialog } from "./SettingsDialog";
 import { Sidebar } from "./Sidebar";
 import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "./ui";
@@ -23,7 +25,10 @@ export function Layout() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
+  const t = useT();
+  const { lang, setLang } = useLang();
   const [refreshing, setRefreshing] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // 根据路由派生「当前文件夹」，使其不受搜索时页面卸载的影响
   useEffect(() => {
@@ -61,7 +66,7 @@ export function Layout() {
             navigate("/");
           }}
           className="flex shrink-0 items-center gap-2"
-          title="返回首页"
+          title={t("backHome")}
         >
           <span
             className="flex h-7 w-7 items-center justify-center rounded-lg text-white"
@@ -80,7 +85,7 @@ export function Layout() {
 
         <button
           onClick={() => setIncludeCommands(!includeCommands)}
-          title={includeCommands ? "结果包含斜杠命令" : "结果已隐藏斜杠命令"}
+          title={includeCommands ? t("commandsShownTitle") : t("commandsHiddenTitle")}
           className={cn(
             "flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors",
             includeCommands
@@ -89,7 +94,7 @@ export function Layout() {
           )}
         >
           <Terminal size={14} />
-          命令
+          {t("commandsToggle")}
         </button>
 
         <Button
@@ -97,13 +102,36 @@ export function Layout() {
           size="icon"
           onClick={handleRefresh}
           disabled={refreshing}
-          title="重新扫描 ~/.claude 数据"
+          title={t("refreshTitle")}
         >
           <RefreshCw size={16} className={cn(refreshing && "animate-spin")} />
         </Button>
 
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setSettingsOpen(true)}
+          title={t("settingsButtonTitle")}
+        >
+          <Settings size={16} />
+        </Button>
+
+        <button
+          onClick={() => setLang(lang === "zh" ? "en" : "zh")}
+          title={t("switchLanguage")}
+          className="flex h-9 shrink-0 items-center gap-1 rounded-lg border border-border px-2 text-xs font-medium text-muted transition-colors hover:text-foreground"
+        >
+          <Languages size={14} />
+          {t("langBadge")}
+        </button>
+
         <ThemeToggle />
       </header>
+
+      <SettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
 
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />

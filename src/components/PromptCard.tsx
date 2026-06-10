@@ -1,15 +1,19 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
+  Check,
   ChevronDown,
   ChevronUp,
   Clipboard,
   Command,
+  Copy,
   Folder,
   GitBranch,
   MessageSquare,
 } from "lucide-react";
 import type { PromptEntry } from "@/lib/types";
+import { useCopy } from "@/hooks/useCopy";
+import { useT, type DictKey } from "@/i18n";
 import {
   absoluteTime,
   cn,
@@ -21,10 +25,10 @@ import {
 import { Highlight } from "./Highlight";
 import { Badge } from "./ui";
 
-const sourceLabel: Record<string, string> = {
-  history: "输入历史",
-  conversation: "对话记录",
-  both: "历史 + 对话",
+const sourceLabelKey: Record<string, DictKey> = {
+  history: "sourceHistory",
+  conversation: "sourceConversation",
+  both: "sourceBoth",
 };
 
 export function PromptCard({
@@ -36,8 +40,11 @@ export function PromptCard({
   ranges?: [number, number][];
   showProject?: boolean;
 }) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
+  const { copied, copy } = useCopy();
   const collapsible = entry.charCount > 150 || entry.text.includes("\n");
+  const sourceKey = sourceLabelKey[entry.source];
 
   return (
     <div className="rounded-xl border border-border bg-surface p-3.5 transition-colors hover:border-accent/40">
@@ -58,7 +65,7 @@ export function PromptCard({
           className="mt-1 flex items-center gap-0.5 text-[11px] font-medium text-accent hover:underline"
         >
           {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-          {expanded ? "收起" : "展开全文"}
+          {expanded ? t("collapse") : t("expandFull")}
         </button>
       )}
 
@@ -83,11 +90,11 @@ export function PromptCard({
         {entry.isCommand && (
           <Badge tone="warning">
             <Command size={10} />
-            命令
+            {t("commandBadge")}
           </Badge>
         )}
 
-        <Badge tone="muted">{sourceLabel[entry.source] ?? entry.source}</Badge>
+        <Badge tone="muted">{sourceKey ? t(sourceKey) : entry.source}</Badge>
 
         {entry.gitBranch && (
           <span className="flex items-center gap-1">
@@ -99,19 +106,32 @@ export function PromptCard({
         {entry.pastedCount > 0 && (
           <span className="flex items-center gap-1">
             <Clipboard size={11} />
-            {entry.pastedCount} 处粘贴
+            {t("pastedCount", { count: entry.pastedCount })}
           </span>
         )}
 
         <span className="ml-auto flex items-center gap-3">
-          <span>{formatNumber(entry.charCount)} 字</span>
+          <span>{t("charCount", { count: formatNumber(entry.charCount) })}</span>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              copy(entry.text);
+            }}
+            title={t("copyPrompt")}
+            className={cn(
+              "flex items-center transition-colors",
+              copied ? "text-success" : "text-muted hover:text-accent"
+            )}
+          >
+            {copied ? <Check size={12} /> : <Copy size={12} />}
+          </button>
           {entry.sessionId && (
             <Link
               to={`/conversation/${entry.sessionId}`}
               className="flex items-center gap-1 font-medium text-accent hover:underline"
             >
               <MessageSquare size={11} />
-              查看对话
+              {t("viewConversation")}
             </Link>
           )}
         </span>

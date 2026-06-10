@@ -10,6 +10,7 @@ import {
   YAxis,
 } from "recharts";
 import type { DayCount, HourCount, ProjectCount } from "@/lib/types";
+import { useT } from "@/i18n";
 
 const AXIS = "var(--muted)";
 const GRID = "var(--border)";
@@ -21,13 +22,14 @@ interface TooltipProps {
   label?: string | number;
 }
 
-function TooltipBox({ active, payload, label, unit = "条" }: TooltipProps & { unit?: string }) {
+function TooltipBox({ active, payload, label, unit }: TooltipProps & { unit?: string }) {
+  const t = useT();
   if (!active || !payload || payload.length === 0) return null;
   return (
     <div className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs shadow-lg">
       <div className="font-medium text-foreground">{label}</div>
       <div className="text-muted">
-        {payload[0]?.value} {unit}
+        {payload[0]?.value} {unit ?? t("unitItems")}
       </div>
     </div>
   );
@@ -142,9 +144,10 @@ export function ProjectChart({ data }: { data: ProjectCount[] }) {
 }
 
 function EmptyChart() {
+  const t = useT();
   return (
     <div className="flex h-52 items-center justify-center text-xs text-muted">
-      暂无数据
+      {t("noData")}
     </div>
   );
 }

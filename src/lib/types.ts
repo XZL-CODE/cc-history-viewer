@@ -91,6 +91,50 @@ export interface ProjectCount {
   count: number;
 }
 
+/* ----------------------------- Token 用量统计 ----------------------------- */
+
+export interface ModelUsage {
+  model: string;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheCreation: number;
+  messages: number;
+  estCostUsd: number | null;
+}
+
+export interface DayUsage {
+  day: string;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheCreation: number;
+  estCostUsd: number;
+}
+
+export interface ProjectUsage {
+  path: string;
+  name: string;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheCreation: number;
+  estCostUsd: number;
+}
+
+export interface UsageStats {
+  totalInput: number;
+  totalOutput: number;
+  totalCacheRead: number;
+  totalCacheCreation: number;
+  estCostUsd: number;
+  unknownModelTokens: number;
+  assistantMessages: number;
+  byModel: ModelUsage[];
+  byDay: DayUsage[];
+  byProject: ProjectUsage[];
+}
+
 export interface AppStats {
   totalPrompts: number;
   totalProjects: number;
@@ -106,12 +150,14 @@ export interface AppStats {
   byWeekday: WeekdayCount[];
   topProjects: ProjectCount[];
   ccVersions: string[];
+  usage: UsageStats;
 }
 
 export interface IndexMeta {
   builtAt: number;
   fromCache: boolean;
   sourceFiles: number;
+  reparsedFiles: number;
 }
 
 export type SortMode = "newest" | "oldest" | "longest";
@@ -125,6 +171,7 @@ export interface ExportParams {
   includeCommands: boolean;
   groupBy: ExportGroupBy;
   write: boolean;
+  lang?: string; // 导出文案语言："zh" | "en"，跟随界面语言
 }
 
 export interface ExportResult {
@@ -133,4 +180,35 @@ export interface ExportResult {
   promptCount: number;
   folderCount: number;
   dayCount: number;
+}
+
+/* ----------------------------- 对话导出 ----------------------------- */
+
+export interface ConversationExportResult {
+  preview: string;
+  path: string | null;
+  messageCount: number;
+}
+
+/* ----------------------------- 设置 ----------------------------- */
+
+export interface SettingsInput {
+  claudeDataDir: string;
+  historyFile: string;
+  projectsDir: string;
+  sessionsDir: string;
+}
+
+export interface ResolvedPaths {
+  history: string;
+  projects: string;
+  sessions: string;
+  historyExists: boolean;
+  projectsExists: boolean;
+  sessionsExists: boolean;
+}
+
+export interface SettingsView extends SettingsInput {
+  configPath: string;
+  resolved: ResolvedPaths;
 }

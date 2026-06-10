@@ -2,19 +2,23 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { format, formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
+import { getCurrentLang, translate } from "@/i18n";
 
 /** 合并 Tailwind 类名 */
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** 相对时间，如「3 天前」 */
+/** 相对时间，如「3 天前」/ "3 days ago"（跟随当前界面语言） */
 export function relativeTime(ts: number): string {
-  if (!ts) return "未知时间";
+  if (!ts) return translate("unknownTime");
   try {
-    return formatDistanceToNow(new Date(ts), { addSuffix: true, locale: zhCN });
+    return formatDistanceToNow(new Date(ts), {
+      addSuffix: true,
+      locale: getCurrentLang() === "zh" ? zhCN : undefined,
+    });
   } catch {
-    return "未知时间";
+    return translate("unknownTime");
   }
 }
 
@@ -28,11 +32,11 @@ export function absoluteTime(ts: number): string {
   }
 }
 
-/** 日期，如「2026年5月16日」 */
+/** 日期，如「2026年5月16日」/ "May 16, 2026"（跟随当前界面语言） */
 export function dayLabel(ts: number): string {
   if (!ts) return "—";
   try {
-    return format(new Date(ts), "yyyy年M月d日");
+    return format(new Date(ts), translate("dayLabelFormat"));
   } catch {
     return "—";
   }
@@ -40,7 +44,20 @@ export function dayLabel(ts: number): string {
 
 /** 千分位数字 */
 export function formatNumber(n: number): string {
-  return (n ?? 0).toLocaleString("zh-CN");
+  return (n ?? 0).toLocaleString(getCurrentLang() === "zh" ? "zh-CN" : "en-US");
+}
+
+/** Token 数缩写：≥1e9 → "1.2B"，≥1e6 → "3.4M"，≥1e3 → "5.6k"，否则原样 */
+export function formatTokens(n: number): string {
+  const v = n ?? 0;
+  const fmt = (x: number, suffix: string) => {
+    const s = x.toFixed(1);
+    return `${s.endsWith(".0") ? s.slice(0, -2) : s}${suffix}`;
+  };
+  if (v >= 1e9) return fmt(v / 1e9, "B");
+  if (v >= 1e6) return fmt(v / 1e6, "M");
+  if (v >= 1e3) return fmt(v / 1e3, "k");
+  return String(v);
 }
 
 /** 把绝对路径压缩为可读短路径：/Users/xxx/... → ~/... */

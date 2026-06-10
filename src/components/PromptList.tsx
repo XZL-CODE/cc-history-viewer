@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PromptEntry } from "@/lib/types";
+import { useT } from "@/i18n";
 import { formatNumber } from "@/lib/utils";
 import { PromptCard } from "./PromptCard";
-import { Button } from "./ui";
 
-const PAGE_SIZE = 60;
+const BATCH_SIZE = 200;
 
 export interface PromptListItem {
   entry: PromptEntry;
@@ -18,36 +18,57 @@ export function PromptList({
   items: PromptListItem[];
   showProject?: boolean;
 }) {
-  const [visible, setVisible] = useState(PAGE_SIZE);
+  const t = useT();
+  const [visible, setVisible] = useState(BATCH_SIZE);
 
-  // 列表内容变化时重置分页
+  // items 引用变化（新数据）时重置分批
   useEffect(() => {
-    setVisible(PAGE_SIZE);
-  }, [items.length, items[0]?.entry.id]);
+    setVisible(BATCH_SIZE);
+  }, [items]);
+
+  // sentinel 进入视口时追加一批（callback ref：挂载即观察，卸载即断开）
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const sentinelRef = useCallback((node: HTMLDivElement | null) => {
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisible((v) => v + BATCH_SIZE);
+        }
+      },
+      { rootMargin: "400px 0px" }
+    );
+    observer.observe(node);
+    observerRef.current = observer;
+  }, []);
 
   const shown = items.slice(0, visible);
-  const remaining = items.length - visible;
+  const remaining = items.length - shown.length;
 
   return (
     <div className="space-y-2.5">
       {shown.map((it) => (
-        <PromptCard
-          key={it.entry.id}
-          entry={it.entry}
-          ranges={it.ranges}
-          showProject={showProject}
-        />
-      ))}
-      {remaining > 0 && (
-        <div className="flex justify-center pt-1">
-          <Button
-            variant="subtle"
-            size="sm"
-            onClick={() => setVisible((v) => v + PAGE_SIZE)}
-          >
-            加载更多（还有 {formatNumber(remaining)} 条）
-          </Button>
+        <div key={it.entry.id} className="cv-auto">
+          <PromptCard
+            entry={it.entry}
+            ranges={it.ranges}
+            showProject={showProject}
+          />
         </div>
+      ))}
+
+      {remaining > 0 && (
+        <>
+          <div ref={sentinelRef} aria-hidden className="h-px" />
+          <p className="pb-2 pt-1 text-center text-[11px] text-muted">
+            {t("showedCount", {
+              shown: formatNumber(shown.length),
+              total: formatNumber(items.length),
+            })}
+          </p>
+        </>
       )}
     </div>
   );

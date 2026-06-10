@@ -31,6 +31,16 @@ export function useIndexMeta() {
   });
 }
 
+/** 设置（数据源目录）。每次打开都重新读取，保证 resolved 路径状态新鲜。 */
+export function useSettings(enabled = true) {
+  return useQuery({
+    queryKey: ["settings"],
+    queryFn: api.getSettings,
+    enabled,
+    staleTime: 0,
+  });
+}
+
 export function useRecentPrompts(limit: number, includeCommands: boolean) {
   return useQuery({
     queryKey: ["recent-prompts", limit, includeCommands],
@@ -78,10 +88,18 @@ export function useExportPreview(params: {
   project: string | null;
   includeCommands: boolean;
   groupBy: ExportGroupBy;
+  lang: string;
   enabled: boolean;
 }) {
-  const { startDate, endDate, project, includeCommands, groupBy, enabled } =
-    params;
+  const {
+    startDate,
+    endDate,
+    project,
+    includeCommands,
+    groupBy,
+    lang,
+    enabled,
+  } = params;
   return useQuery({
     queryKey: [
       "export-preview",
@@ -90,6 +108,7 @@ export function useExportPreview(params: {
       project,
       includeCommands,
       groupBy,
+      lang,
     ],
     queryFn: () =>
       api.buildExport({
@@ -98,6 +117,7 @@ export function useExportPreview(params: {
         project,
         includeCommands,
         groupBy,
+        lang,
         write: false,
       }),
     enabled,

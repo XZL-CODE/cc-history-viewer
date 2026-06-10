@@ -2,9 +2,11 @@
 // 注意：invoke 的参数键用 camelCase，Tauri 会自动映射到 Rust 的 snake_case 参数。
 
 import { invoke } from "@tauri-apps/api/core";
+import { translate } from "@/i18n";
 import type {
   AppStats,
   ConversationDetail,
+  ConversationExportResult,
   ExportParams,
   ExportResult,
   IndexMeta,
@@ -12,6 +14,8 @@ import type {
   PromptEntry,
   SearchResult,
   SessionSummary,
+  SettingsInput,
+  SettingsView,
   SortMode,
 } from "./types";
 
@@ -63,7 +67,26 @@ export const api = {
       includeCommands: p.includeCommands,
       groupBy: p.groupBy,
       write: p.write,
+      lang: p.lang,
     }),
+
+  exportConversation: (p: {
+    sessionId: string;
+    includeTools: boolean;
+    write: boolean;
+    lang?: string;
+  }) =>
+    invoke<ConversationExportResult>("export_conversation", {
+      sessionId: p.sessionId,
+      includeTools: p.includeTools,
+      write: p.write,
+      lang: p.lang,
+    }),
+
+  getSettings: () => invoke<SettingsView>("get_settings"),
+
+  setSettings: (settings: SettingsInput) =>
+    invoke<SettingsView>("set_settings", { settings }),
 
   revealPath: (path: string) => invoke<void>("reveal_path", { path }),
 };
@@ -72,5 +95,5 @@ export const api = {
 export function errMessage(e: unknown): string {
   if (typeof e === "string") return e;
   if (e instanceof Error) return e.message;
-  return "发生未知错误";
+  return translate("unknownError");
 }
