@@ -1,0 +1,24 @@
+package.json
+  s_3d1c6efb15f678::t_a3f4c25e3a8ab1 4
+README.md
+  s_3d1c6efb15f678::t_008eb3288d5213 25,28-29,31,33-34
+  s_3d1c6efb15f678::t_882102853bdd13 153,160-162
+  s_3d1c6efb15f678::t_f231088046a4dc 108,111-112,114,116-117
+  s_3d1c6efb15f678::t_a98ab65e3bfc60 69,76-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "977296f0964782479e8f449e449039f01996f317",
+  "prompts": {},
+  "sessions": {
+    "s_3d1c6efb15f678": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "317aa0a7-19b6-4186-a34b-8f322f5a90a9",
+        "model": "claude-fable-5"
+      },
+      "human_author": "MacBookPro <abc10086xzl@gmail.com>"
+    }
+  }
+}
