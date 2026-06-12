@@ -27,6 +27,7 @@ pub fn run() {
             commands::get_settings,
             commands::set_settings,
             commands::build_prompt_export,
+            commands::export_search_results,
             commands::export_conversation,
             commands::reveal_path,
         ])

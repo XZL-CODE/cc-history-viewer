@@ -298,6 +298,76 @@ fn meta_suffix(e: &PromptEntry, lang: Lang) -> String {
     s
 }
 
+// ----------------------------- 搜索结果导出 -----------------------------
+
+/// 把一组搜索命中的 prompt 导出为 Markdown（按文件夹分组，组内按时间正序）。
+/// 用于分析「某个关键词 / 命令都在哪些场景下被使用」。
+pub fn build_search_export(
+    items: &[&PromptEntry],
+    query: &str,
+    scope: Option<&str>,
+    lang: Lang,
+) -> ExportData {
+    let mut sorted: Vec<&PromptEntry> = items.to_vec();
+    sorted.sort_by_key(|e| e.timestamp);
+
+    let prompt_count = sorted.len();
+    let mut day_set = std::collections::HashSet::new();
+    let mut folder_set = std::collections::HashSet::new();
+    for e in &sorted {
+        day_set.insert(day_key(e.timestamp));
+        folder_set.insert(e.project.clone());
+    }
+    let day_count = day_set.len();
+    let folder_count = folder_set.len();
+
+    let mut md = String::new();
+    match lang {
+        Lang::Zh => {
+            md.push_str("# 搜索结果导出\n\n");
+            md.push_str(&format!("> **关键词**　`{query}`\n"));
+            md.push_str(&format!(
+                "> **范围**　{}\n",
+                scope.map(pretty_path).unwrap_or_else(|| "全部文件夹".to_string())
+            ));
+            md.push_str(&format!(
+                "> **共**　{prompt_count} 条 prompt · {folder_count} 个文件夹 · 跨 {day_count} 天\n"
+            ));
+            md.push_str(&format!("> **导出于**　{}\n\n", now_label()));
+        }
+        Lang::En => {
+            md.push_str("# Search Results Export\n\n");
+            md.push_str(&format!("> **Keyword**　`{query}`\n"));
+            md.push_str(&format!(
+                "> **Scope**　{}\n",
+                scope.map(pretty_path).unwrap_or_else(|| "all folders".to_string())
+            ));
+            md.push_str(&format!(
+                "> **Total**　{prompt_count} prompts · {folder_count} folders · across {day_count} days\n"
+            ));
+            md.push_str(&format!("> **Exported at**　{}\n\n", now_label()));
+        }
+    }
+
+    if sorted.is_empty() {
+        md.push_str(match lang {
+            Lang::Zh => "---\n\n_没有命中的 prompt。_\n",
+            Lang::En => "---\n\n_No matching prompts._\n",
+        });
+    } else {
+        md.push_str("---\n\n");
+        render_by_project(&mut md, &sorted, lang);
+    }
+
+    ExportData {
+        markdown: md,
+        prompt_count,
+        folder_count,
+        day_count,
+        lang,
+    }
+}
+
 // ----------------------------- 对话导出 -----------------------------
 
 /// 把单个会话的完整对话渲染为 Markdown。

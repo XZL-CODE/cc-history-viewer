@@ -131,7 +131,7 @@ export function PromptCard({
           </button>
           {entry.sessionId && (
             <Link
-              to={`/conversation/${entry.sessionId}`}
+              to={`/conversation/${entry.sessionId}?t=${entry.timestamp}`}
               onClick={() => setQuery("")}
               className="flex items-center gap-1 font-medium text-accent hover:underline"
             >

@@ -70,6 +70,21 @@ export const api = {
       lang: p.lang,
     }),
 
+  exportSearchResults: (p: {
+    query: string;
+    projectFilter: string | null;
+    includeCommands: boolean;
+    write: boolean;
+    lang?: string;
+  }) =>
+    invoke<ExportResult>("export_search_results", {
+      query: p.query,
+      projectFilter: p.projectFilter,
+      includeCommands: p.includeCommands,
+      write: p.write,
+      lang: p.lang,
+    }),
+
   exportConversation: (p: {
     sessionId: string;
     includeTools: boolean;

@@ -46,6 +46,8 @@ export const zh = {
   searchFailed: "搜索失败",
   noMatchingPrompts: "没有匹配的 prompt",
   noMatchingPromptsHint: "换个关键词试试。输入多个词（空格分隔）表示需同时包含。",
+  exportSearchResults: "导出搜索结果",
+  commandReplyNote: "侧问命令（如 /btw）的回复仅在终端显示，Claude Code 未保存",
 
   /* ----------------------------- 侧栏 Sidebar ----------------------------- */
   navHome: "首页 · 概览",

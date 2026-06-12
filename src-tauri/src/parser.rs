@@ -130,6 +130,10 @@ struct ConvLine {
     is_sidechain: Option<bool>,
     #[serde(rename = "requestId")]
     request_id: Option<String>,
+    /// system 行的子类型（如 "local_command"：斜杠命令的调用标记）
+    subtype: Option<String>,
+    /// system 行的顶层内容（local_command 时为命令文本）
+    content: Option<serde_json::Value>,
     message: Option<ConvMessage>,
 }
 
@@ -402,6 +406,30 @@ pub fn parse_conversation_detail(path: &Path) -> Option<ConversationDetail> {
         if version.is_none() {
             version = parsed.version.clone();
         }
+        // 斜杠命令的调用标记（system/local_command）也呈现在对话流里：
+        // /btw 这类侧问命令的回答 CC 不持久化，但至少能看到「这里执行过命令」。
+        if ltype == "system" {
+            if parsed.subtype.as_deref() == Some("local_command") {
+                if let Some(serde_json::Value::String(c)) = &parsed.content {
+                    let text = prettify_display_text(c);
+                    if !text.is_empty() {
+                        messages.push(ChatMessage {
+                            uuid: parsed.uuid.unwrap_or_default(),
+                            role: "system".to_string(),
+                            timestamp: ts.unwrap_or(0),
+                            is_sidechain: false,
+                            blocks: vec![ContentBlock {
+                                kind: "text".to_string(),
+                                text: Some(text),
+                                tool_name: None,
+                                tool_input: None,
+                            }],
+                        });
+                    }
+                }
+            }
+            continue;
+        }
         if ltype != "user" && ltype != "assistant" {
             continue;
         }
@@ -589,6 +617,29 @@ fn extract_between(s: &str, open: &str, close: &str) -> Option<String> {
     Some(s[start..start + rel_end].to_string())
 }
 
+/// 对话详情展示用的文本美化：
+/// - `<command-name>/foo</command-name>...<command-args>bar</command-args>` → "/foo bar"
+/// - 剥离 local-command-caveat 包裹块
+/// 仅影响展示（parse_conversation_detail 不参与缓存），不改变索引/搜索的数据。
+fn prettify_display_text(s: &str) -> String {
+    if s.contains("<command-name>") {
+        if let Some(name) = extract_between(s, "<command-name>", "</command-name>") {
+            let n = name.trim();
+            if !n.is_empty() {
+                let args = extract_between(s, "<command-args>", "</command-args>")
+                    .map(|a| a.trim().to_string())
+                    .unwrap_or_default();
+                return if args.is_empty() {
+                    n.to_string()
+                } else {
+                    format!("{n} {args}")
+                };
+            }
+        }
+    }
+    strip_tag_blocks(s, "local-command-caveat").trim().to_string()
+}
+
 /// 字符级截断
 fn truncate(s: &str) -> String {
     if s.chars().count() > MAX_BLOCK_CHARS {
@@ -604,11 +655,11 @@ fn content_to_blocks(content: Option<&serde_json::Value>) -> Vec<ContentBlock> {
     let mut blocks = Vec::new();
     match content {
         Some(serde_json::Value::String(s)) => {
-            let t = s.trim();
+            let t = prettify_display_text(s.trim());
             if !t.is_empty() {
                 blocks.push(ContentBlock {
                     kind: "text".to_string(),
-                    text: Some(truncate(t)),
+                    text: Some(truncate(&t)),
                     tool_name: None,
                     tool_input: None,
                 });
@@ -620,9 +671,13 @@ fn content_to_blocks(content: Option<&serde_json::Value>) -> Vec<ContentBlock> {
                 match bt {
                     "text" => {
                         if let Some(t) = b.get("text").and_then(|v| v.as_str()) {
+                            let t = prettify_display_text(t);
+                            if t.is_empty() {
+                                continue;
+                            }
                             blocks.push(ContentBlock {
                                 kind: "text".to_string(),
-                                text: Some(truncate(t)),
+                                text: Some(truncate(&t)),
                                 tool_name: None,
                                 tool_input: None,
                             });

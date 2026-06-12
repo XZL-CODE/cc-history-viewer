@@ -57,7 +57,7 @@ export interface ContentBlock {
 
 export interface ChatMessage {
   uuid: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   timestamp: number;
   isSidechain: boolean;
   blocks: ContentBlock[];

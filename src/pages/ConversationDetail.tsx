@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   Check,
@@ -25,7 +25,13 @@ import type {
   ContentBlock,
   ConversationExportResult,
 } from "@/lib/types";
-import { absoluteTime, encodePath, formatNumber, prettyPath } from "@/lib/utils";
+import {
+  absoluteTime,
+  cn,
+  encodePath,
+  formatNumber,
+  prettyPath,
+} from "@/lib/utils";
 import { api, errMessage } from "@/lib/api";
 
 function BlockView({ block }: { block: ContentBlock }) {
@@ -70,14 +76,28 @@ function BlockView({ block }: { block: ContentBlock }) {
   );
 }
 
-function MessageBubble({ msg }: { msg: ChatMessage }) {
+function MessageBubble({
+  msg,
+  highlighted = false,
+}: {
+  msg: ChatMessage;
+  highlighted?: boolean;
+}) {
   const t = useT();
   const isUser = msg.role === "user";
+  // system = 斜杠命令的调用标记（如 /btw）；侧问命令的回复 CC 不持久化
+  const isSystem = msg.role === "system";
   return (
-    <div className="rounded-xl border border-border bg-surface p-4">
+    <div
+      className={cn(
+        "rounded-xl border border-border bg-surface p-4 transition-shadow duration-500",
+        isSystem && "border-dashed bg-surface/60",
+        highlighted && "ring-2 ring-accent shadow-lg"
+      )}
+    >
       <div className="mb-2.5 flex items-center gap-2">
-        <Badge tone={isUser ? "accent" : "default"}>
-          {isUser ? t("roleUser") : "Claude"}
+        <Badge tone={isUser ? "accent" : isSystem ? "warning" : "default"}>
+          {isUser ? t("roleUser") : isSystem ? t("commandBadge") : "Claude"}
         </Badge>
         {msg.isSidechain && <Badge tone="muted">{t("sidechainBadge")}</Badge>}
         <span className="text-[11px] text-muted">
@@ -89,6 +109,9 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
           <BlockView key={i} block={b} />
         ))}
       </div>
+      {isSystem && (
+        <p className="mt-2 text-[11px] text-muted">{t("commandReplyNote")}</p>
+      )}
     </div>
   );
 }
@@ -101,6 +124,33 @@ export function ConversationDetail() {
     sessionId ?? null
   );
   const { copied, copy } = useCopy();
+
+  // 从搜索结果跳转携带 ?t=<时间戳>：定位到时间最接近的消息并短暂高亮
+  const [searchParams] = useSearchParams();
+  const targetTs = Number(searchParams.get("t")) || null;
+  const [highlightIdx, setHighlightIdx] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!data || !targetTs || data.messages.length === 0) return;
+    let best = 0;
+    let bestDiff = Number.POSITIVE_INFINITY;
+    data.messages.forEach((m, i) => {
+      const diff = Math.abs(m.timestamp - targetTs);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        best = i;
+      }
+    });
+    setHighlightIdx(best);
+    // 等列表渲染完成后再滚动
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`msg-${best}`)
+        ?.scrollIntoView({ block: "center" });
+    });
+    const timer = setTimeout(() => setHighlightIdx(null), 2500);
+    return () => clearTimeout(timer);
+  }, [data, targetTs]);
 
   // 导出 Markdown
   const [exportOpen, setExportOpen] = useState(false);
@@ -292,7 +342,9 @@ export function ConversationDetail() {
           ) : (
             <div className="space-y-3">
               {data.messages.map((m, i) => (
-                <MessageBubble key={m.uuid || i} msg={m} />
+                <div key={m.uuid || i} id={`msg-${i}`}>
+                  <MessageBubble msg={m} highlighted={highlightIdx === i} />
+                </div>
               ))}
             </div>
           )}

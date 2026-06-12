@@ -48,7 +48,7 @@ fn session_golden() {
     assert_eq!(r.version.as_deref(), Some("2.0.0"));
     assert_eq!(r.started_at, iso_ms("2026-05-16T02:00:00.000Z"));
     assert_eq!(r.ended_at, iso_ms("2026-05-16T02:01:35.000Z"));
-    // 8 行 user/assistant 全部计入消息数（含 sidechain 与 tool_result 行）
+    // 8 行 user/assistant 计入消息数（system/local_command 行不算消息）
     assert_eq!(r.message_count, 8);
 
     // prompt 提取：tool_result-only 与 sidechain 的 user 行不算 prompt；
@@ -83,7 +83,8 @@ fn session_detail_golden() {
     let d = parser::parse_conversation_detail(&path).expect("fixture 应能解析");
 
     assert_eq!(d.project, "/Users/dev/alpha");
-    assert_eq!(d.messages.len(), 8);
+    // 8 条 user/assistant + 1 条 system/local_command 命令标记
+    assert_eq!(d.messages.len(), 9);
 
     // 第 1 条：user 文本块
     assert_eq!(d.messages[0].role, "user");
@@ -94,6 +95,17 @@ fn session_detail_golden() {
     assert_eq!(tool_msg.blocks[0].kind, "tool_use");
     assert_eq!(tool_msg.blocks[0].tool_name.as_deref(), Some("Bash"));
 
+    // 斜杠命令的 user 消息在展示层被美化为「命令名」（标签噪声被剥离）
+    assert_eq!(d.messages[5].blocks[0].text.as_deref(), Some("/model"));
+
+    // system/local_command 行呈现为 role="system"，命令与参数拼接展示
+    let sys_msg = &d.messages[6];
+    assert_eq!(sys_msg.role, "system");
+    assert_eq!(
+        sys_msg.blocks[0].text.as_deref(),
+        Some("/btw 顺便问一下进度")
+    );
+
     // sidechain 标记保留
-    assert!(d.messages[6].is_sidechain);
+    assert!(d.messages[7].is_sidechain);
 }

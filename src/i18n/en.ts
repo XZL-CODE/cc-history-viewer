@@ -46,6 +46,9 @@ export const en: Record<keyof typeof zh, string> = {
   noMatchingPrompts: "No matching prompts",
   noMatchingPromptsHint:
     "Try different keywords. Multiple words (space-separated) must all match.",
+  exportSearchResults: "Export results",
+  commandReplyNote:
+    "Replies to aside commands (e.g. /btw) are shown in the terminal only and not saved by Claude Code",
 
   /* ----------------------------- 侧栏 Sidebar ----------------------------- */
   navHome: "Home · Overview",

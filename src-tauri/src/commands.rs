@@ -323,6 +323,65 @@ pub fn build_prompt_export(
     })
 }
 
+/// 把当前搜索命中的全部 prompt 导出为 Markdown（按文件夹分组）。
+/// write=false 仅生成预览与统计；write=true 额外写入 ~/Downloads。
+#[tauri::command]
+pub fn export_search_results(
+    query: String,
+    project_filter: Option<String>,
+    include_commands: bool,
+    write: bool,
+    lang: Option<String>,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<ExportResult, String> {
+    let lang = Lang::from_opt(lang.as_deref());
+    let data = read_index(&state, &app, |idx| {
+        let results = indexer::search(
+            &idx.prompts,
+            &query,
+            project_filter.as_deref(),
+            include_commands,
+        );
+        let items: Vec<&PromptEntry> = results.iter().map(|r| &r.entry).collect();
+        export::build_search_export(&items, &query, project_filter.as_deref(), lang)
+    })?;
+
+    let mut path: Option<String> = None;
+    if write {
+        if data.prompt_count == 0 {
+            return Err("没有可导出的搜索结果。".to_string());
+        }
+        let date = chrono::Local::now().format("%Y-%m-%d");
+        let base = format!("CC-Search_{}_{date}", sanitize_for_filename(&query));
+        let target = unique_export_path(&base);
+        std::fs::write(&target, &data.markdown).map_err(|e| format!("写入文件失败：{e}"))?;
+        path = Some(target.to_string_lossy().to_string());
+    }
+
+    Ok(ExportResult {
+        preview: data.preview(),
+        path,
+        prompt_count: data.prompt_count,
+        folder_count: data.folder_count,
+        day_count: data.day_count,
+    })
+}
+
+/// 把搜索词压成安全的文件名片段：保留字母数字与 CJK，其余替换为 '-'，最长 24 字符。
+fn sanitize_for_filename(q: &str) -> String {
+    let cleaned: String = q
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect();
+    let trimmed: String = cleaned.trim_matches('-').chars().take(24).collect();
+    if trimmed.is_empty() {
+        "query".to_string()
+    } else {
+        trimmed
+    }
+}
+
 /// 导出单个会话的完整对话为 Markdown。
 /// write=false 仅生成预览；write=true 额外写入 ~/Downloads。
 #[tauri::command]
