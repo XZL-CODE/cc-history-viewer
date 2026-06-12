@@ -1,0 +1,50 @@
+src/pages/SearchResults.tsx
+  s_3d1c6efb15f678::t_e57b5705488c67 1-2,6-8,10,29-64,67-94,97-121
+src/pages/ConversationDetail.tsx
+  s_3d1c6efb15f678::t_cd88d000b6e54d 79-85,88-89,91-97,99-100,112-114
+  s_3d1c6efb15f678::t_ef09a6e9b890b1 345-347
+  s_3d1c6efb15f678::t_1421b52da77046 28-34
+  s_3d1c6efb15f678::t_40a21e5fa33a0e 128-154
+src/i18n/en.ts
+  s_3d1c6efb15f678::t_f3d18044e73701 49-51
+src/lib/types.ts
+  s_3d1c6efb15f678::t_c380517f48f125 60
+src-tauri/src/export.rs
+  s_3d1c6efb15f678::t_5c668b964304b8 301-370
+src/lib/api.ts
+  s_3d1c6efb15f678::t_a44962a31cfcef 73-87
+src/components/PromptCard.tsx
+  s_3d1c6efb15f678::t_eed11a6fdd46ea 134
+src-tauri/tests/fixtures/f1e2d3c4-aaaa-bbbb-cccc-000000000001.jsonl
+  s_3d1c6efb15f678::t_4ed9b4512c59f2 7
+src-tauri/src/parser.rs
+  s_3d1c6efb15f678::t_bd29bab59a8018 133-136
+  s_3d1c6efb15f678::t_11142957b514d0 658,662,674-677,680
+  s_3d1c6efb15f678::t_119a5e4329f81f 409-432
+  s_3d1c6efb15f678::t_49464831c6531f 620-642
+src-tauri/src/lib.rs
+  s_3d1c6efb15f678::t_5958ff53892a7a 30
+src-tauri/src/commands.rs
+  s_3d1c6efb15f678::t_70deb1e9569ca8 326-384
+src-tauri/tests/golden.rs
+  s_3d1c6efb15f678::t_1eb10e9ab4399c 86-87,98-108,110
+  s_3d1c6efb15f678::t_7a9dd9c45b7d1f 51
+src/i18n/zh.ts
+  s_3d1c6efb15f678::t_84c71afe7499be 49-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "8b36a3a75a67a87aeccbb6fb13ca6cef22006392",
+  "prompts": {},
+  "sessions": {
+    "s_3d1c6efb15f678": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "317aa0a7-19b6-4186-a34b-8f322f5a90a9",
+        "model": "claude-fable-5"
+      },
+      "human_author": "MacBookPro <abc10086xzl@gmail.com>"
+    }
+  }
+}
