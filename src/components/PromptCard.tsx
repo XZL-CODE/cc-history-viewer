@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { PromptEntry } from "@/lib/types";
 import { useCopy } from "@/hooks/useCopy";
+import { useStore } from "@/store";
 import { useT, type DictKey } from "@/i18n";
 import {
   absoluteTime,
@@ -41,6 +42,8 @@ export function PromptCard({
   showProject?: boolean;
 }) {
   const t = useT();
+  // 点击卡片内链接时清空搜索词：否则搜索结果层会一直盖住目标页面（路由其实已跳转）
+  const { setQuery } = useStore();
   const [expanded, setExpanded] = useState(false);
   const { copied, copy } = useCopy();
   const collapsible = entry.charCount > 150 || entry.text.includes("\n");
@@ -77,6 +80,7 @@ export function PromptCard({
         {showProject && entry.project && (
           <Link
             to={`/project/${encodePath(entry.project)}`}
+            onClick={() => setQuery("")}
             className="flex items-center gap-1 transition-colors hover:text-accent"
             title={entry.project}
           >
@@ -128,6 +132,7 @@ export function PromptCard({
           {entry.sessionId && (
             <Link
               to={`/conversation/${entry.sessionId}`}
+              onClick={() => setQuery("")}
               className="flex items-center gap-1 font-medium text-accent hover:underline"
             >
               <MessageSquare size={11} />

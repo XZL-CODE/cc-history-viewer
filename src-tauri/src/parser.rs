@@ -493,10 +493,19 @@ fn clean_prompt_text(raw: &str) -> Option<String> {
         return None;
     }
     // 斜杠命令：<command-name>/foo</command-name>...
+    // 自定义命令的参数在 <command-args> 里，要一并保留——
+    // 否则与 history.jsonl 中「/foo 参数」形式的同一条 prompt 无法去重合并。
     if let Some(name) = extract_between(trimmed, "<command-name>", "</command-name>") {
         let n = name.trim();
         if !n.is_empty() {
-            return Some(n.to_string());
+            let args = extract_between(trimmed, "<command-args>", "</command-args>")
+                .map(|a| a.trim().to_string())
+                .unwrap_or_default();
+            return Some(if args.is_empty() {
+                n.to_string()
+            } else {
+                format!("{n} {args}")
+            });
         }
     }
     // 去掉系统提示与命令相关包裹标签
@@ -702,6 +711,16 @@ mod tests {
     fn clean_extracts_slash_command() {
         let raw = "<command-name>/clear</command-name>\n<command-message>clear</command-message>\n<command-args></command-args>";
         assert_eq!(clean_prompt_text(raw), Some("/clear".to_string()));
+    }
+
+    #[test]
+    fn clean_keeps_custom_command_args() {
+        // 自定义命令带参数：命令名 + 参数拼接，与 history.jsonl 的形式一致
+        let raw = "<command-name>/btw</command-name>\n<command-message>btw</command-message>\n<command-args>给我一小段话，总结一下项目进度</command-args>";
+        assert_eq!(
+            clean_prompt_text(raw),
+            Some("/btw 给我一小段话，总结一下项目进度".to_string())
+        );
     }
 
     #[test]
