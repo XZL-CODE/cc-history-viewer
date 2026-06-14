@@ -1,0 +1,25 @@
+src-tauri/tauri.conf.json
+  s_3d1c6efb15f678::t_d2e7a045b979df 4
+package.json
+  s_3d1c6efb15f678::t_d2e7a045b979df 4
+src-tauri/Cargo.lock
+  s_3d1c6efb15f678::t_d2e7a045b979df 281
+src-tauri/Cargo.toml
+  s_3d1c6efb15f678::t_d2e7a045b979df 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "968d1949bf3634a051556b7be72fed87250d6355",
+  "prompts": {},
+  "sessions": {
+    "s_3d1c6efb15f678": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "317aa0a7-19b6-4186-a34b-8f322f5a90a9",
+        "model": "claude-fable-5"
+      },
+      "human_author": "MacBookPro <abc10086xzl@gmail.com>"
+    }
+  }
+}
