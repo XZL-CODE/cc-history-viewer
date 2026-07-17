@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -50,25 +51,19 @@ interface Store {
 
 const StoreContext = createContext<Store | null>(null);
 
-function storedAgentFilter(key: string): AgentFilter {
-  const saved = localStorage.getItem(key);
-  return saved === "claude" || saved === "codex" ? saved : "all";
-}
-
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() =>
-    localStorage.getItem("cchv-theme") === "light" ? "light" : "dark"
+    localStorage.getItem("cchv-theme") === "dark" ? "dark" : "light"
   );
-  const [query, setQuery] = useState("");
-  const [agentFilter, setAgentFilterState] = useState<AgentFilter>(() =>
-    storedAgentFilter("cahv-agent-filter")
-  );
+  const [query, setQueryState] = useState("");
+  const queryRef = useRef("");
+  const [agentFilter, setAgentFilterState] = useState<AgentFilter>("all");
   const [sidebarAgentFilter, setSidebarAgentFilterState] =
-    useState<AgentFilter>(() => storedAgentFilter("cahv-sidebar-agent-filter"));
+    useState<AgentFilter>("all");
   const [searchAgentFilter, setSearchAgentFilterState] =
-    useState<AgentFilter>(() => storedAgentFilter("cahv-search-agent-filter"));
+    useState<AgentFilter>("all");
   const [projectAgentFilter, setProjectAgentFilterState] =
-    useState<AgentFilter>(() => storedAgentFilter("cahv-project-agent-filter"));
+    useState<AgentFilter>("all");
   const [scope, setScope] = useState<SearchScope>("global");
   const [includeCommands, setIncludeCommandsState] = useState<boolean>(
     () => localStorage.getItem("cchv-include-commands") !== "false"
@@ -97,22 +92,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const setAgentFilter = useCallback((agent: AgentFilter) => {
     setAgentFilterState(agent);
-    localStorage.setItem("cahv-agent-filter", agent);
   }, []);
 
   const setSidebarAgentFilter = useCallback((agent: AgentFilter) => {
     setSidebarAgentFilterState(agent);
-    localStorage.setItem("cahv-sidebar-agent-filter", agent);
   }, []);
 
   const setSearchAgentFilter = useCallback((agent: AgentFilter) => {
     setSearchAgentFilterState(agent);
-    localStorage.setItem("cahv-search-agent-filter", agent);
   }, []);
 
   const setProjectAgentFilter = useCallback((agent: AgentFilter) => {
     setProjectAgentFilterState(agent);
-    localStorage.setItem("cahv-project-agent-filter", agent);
+  }, []);
+
+  const setQuery = useCallback((nextQuery: string) => {
+    const startsNewSearch =
+      queryRef.current.trim().length === 0 && nextQuery.trim().length > 0;
+    queryRef.current = nextQuery;
+    if (startsNewSearch) setSearchAgentFilterState("all");
+    setQueryState(nextQuery);
   }, []);
 
   const setCurrentProject = useCallback(

@@ -46,14 +46,18 @@ export function PromptCard({
 }) {
   const t = useT();
   // 点击卡片内链接时清空搜索词：否则搜索结果层会一直盖住目标页面（路由其实已跳转）
-  const { setQuery } = useStore();
+  const { setProjectAgentFilter, setQuery } = useStore();
   const [expanded, setExpanded] = useState(false);
   const { copied, copy } = useCopy();
   const collapsible = entry.charCount > 150 || entry.text.includes("\n");
   const originKey = originLabelKey[entry.origin];
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-3.5 transition-colors hover:border-accent/40">
+    <article
+      className="rounded-lg border border-border bg-surface p-3.5 transition-[border-color,box-shadow] hover:border-accent/40 hover:shadow-sm"
+      data-prompt-card
+      data-agent={entry.agent}
+    >
       <div
         onClick={() => collapsible && setExpanded((v) => !v)}
         className={cn(
@@ -83,7 +87,10 @@ export function PromptCard({
         {showProject && entry.project && (
           <Link
             to={`/project/${encodePath(entry.project)}`}
-            onClick={() => setQuery("")}
+            onClick={() => {
+              setQuery("");
+              setProjectAgentFilter("all");
+            }}
             className="flex items-center gap-1 transition-colors hover:text-accent"
             title={entry.project}
           >
@@ -119,7 +126,7 @@ export function PromptCard({
           </span>
         )}
 
-        <span className="flex w-full items-center justify-end gap-3 sm:ml-auto sm:w-auto">
+        <span className="ml-auto flex items-center justify-end gap-2">
           <span>{t("charCount", { count: formatNumber(entry.charCount) })}</span>
           <button
             onClick={(e) => {
@@ -128,7 +135,7 @@ export function PromptCard({
             }}
             title={t("copyPrompt")}
             className={cn(
-              "flex items-center transition-colors",
+              "flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-surface-2",
               copied ? "text-success" : "text-muted hover:text-accent"
             )}
           >
@@ -146,6 +153,6 @@ export function PromptCard({
           )}
         </span>
       </div>
-    </div>
+    </article>
   );
 }

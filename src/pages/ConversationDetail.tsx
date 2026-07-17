@@ -92,7 +92,7 @@ function MessageBubble({
   return (
     <div
       className={cn(
-        "rounded-xl border border-border bg-surface p-4 transition-shadow duration-500",
+        "rounded-lg border border-border bg-surface p-4 transition-shadow duration-500",
         isSystem && "border-dashed bg-surface/60",
         highlighted && "ring-2 ring-accent shadow-lg"
       )}

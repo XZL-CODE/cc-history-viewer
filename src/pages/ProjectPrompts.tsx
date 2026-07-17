@@ -69,7 +69,7 @@ function SessionRow({
   return (
     <Link
       to={`/conversation/${session.agent}/${session.sessionId}`}
-      className="block rounded-xl border border-border bg-surface p-3.5 transition-colors hover:border-accent/40"
+      className="block rounded-lg border border-border bg-surface p-3.5 transition-[border-color,box-shadow] hover:border-accent/40 hover:shadow-sm"
     >
       <div className="line-clamp-2 text-sm font-medium text-foreground">
         {session.title || t("untitledSession")}
@@ -135,12 +135,12 @@ export function ProjectPrompts() {
   );
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-5 sm:px-6 sm:py-6">
+    <div className="page-content py-6">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <Folder size={18} className="shrink-0 text-accent" />
-            <h1 className="min-w-0 break-words text-lg font-semibold text-foreground">
+            <h1 className="min-w-0 break-words text-xl font-semibold text-foreground">
               {name}
             </h1>
           </div>
@@ -172,13 +172,19 @@ export function ProjectPrompts() {
             </div>
           )}
         </div>
-        <AgentFilterControl
-          value={projectAgentFilter}
-          onChange={setProjectAgentFilter}
-        />
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-xs font-medium text-muted max-[1080px]:hidden">
+            {t("projectAgentSource")}
+          </span>
+          <AgentFilterControl
+            value={projectAgentFilter}
+            onChange={setProjectAgentFilter}
+            ariaLabel={t("projectAgentSource")}
+          />
+        </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+      <div className="sticky top-0 z-10 -mx-2 mb-3 flex items-center justify-between gap-2 border-b border-border bg-background/95 px-2 py-3 backdrop-blur-sm">
         <div className="flex items-center rounded-lg border border-border bg-surface p-0.5">
           <TabButton
             active={tab === "prompts"}

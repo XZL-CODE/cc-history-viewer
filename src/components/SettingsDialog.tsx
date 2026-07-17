@@ -152,7 +152,7 @@ export function SettingsDialog({
       />
 
       {/* 卡片 */}
-      <div className="relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-border bg-surface shadow-2xl">
+      <div className="relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg border border-border bg-surface shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
           <h2 className="text-sm font-semibold text-foreground">
             {t("settingsTitle")}

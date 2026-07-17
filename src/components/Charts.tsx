@@ -1,6 +1,4 @@
 import {
-  Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -40,21 +38,15 @@ function TooltipBox({ active, payload, label, unit }: TooltipProps & { unit?: st
   );
 }
 
-/** 每日活跃度（取最近 120 个有记录的日期） */
+/** 最近 14 个有记录日期的活跃度。 */
 export function ActivityChart({ data }: { data: DayCount[] }) {
-  const recent = data.slice(-120);
+  const recent = data.slice(-14);
   if (recent.length === 0) {
     return <EmptyChart />;
   }
   return (
-    <ResponsiveContainer width="100%" height={208}>
-      <AreaChart data={recent} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
-        <defs>
-          <linearGradient id="activityGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={ACCENT} stopOpacity={0.5} />
-            <stop offset="100%" stopColor={ACCENT} stopOpacity={0} />
-          </linearGradient>
-        </defs>
+    <ResponsiveContainer width="100%" height={174}>
+      <BarChart data={recent} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
         <CartesianGrid stroke={GRID} strokeDasharray="3 3" vertical={false} />
         <XAxis
           dataKey="day"
@@ -67,17 +59,14 @@ export function ActivityChart({ data }: { data: DayCount[] }) {
           tick={{ fill: AXIS, fontSize: 10 }}
           stroke={GRID}
           allowDecimals={false}
-          width={40}
+          width={32}
         />
-        <Tooltip content={<TooltipBox />} cursor={{ stroke: ACCENT }} />
-        <Area
-          type="monotone"
-          dataKey="count"
-          stroke={ACCENT}
-          strokeWidth={2}
-          fill="url(#activityGradient)"
+        <Tooltip
+          content={<TooltipBox />}
+          cursor={{ fill: "var(--surface-2)" }}
         />
-      </AreaChart>
+        <Bar dataKey="count" fill={ACCENT} radius={[3, 3, 0, 0]} />
+      </BarChart>
     </ResponsiveContainer>
   );
 }

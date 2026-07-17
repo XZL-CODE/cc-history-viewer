@@ -25,7 +25,7 @@ import type {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
 import { AgentBadge } from "@/components/AgentBadge";
 import { useT } from "@/i18n";
-import { encodePath, formatNumber, formatTokens } from "@/lib/utils";
+import { cn, encodePath, formatNumber, formatTokens } from "@/lib/utils";
 
 const AXIS = "var(--muted)";
 const GRID = "var(--border)";
@@ -72,8 +72,8 @@ function StatCard({
     <div
       className={
         prominent
-          ? "rounded-xl border border-accent/50 bg-accent/5 p-4"
-          : "rounded-xl border border-border bg-surface p-4"
+          ? "rounded-lg border border-accent/50 bg-accent/5 p-4"
+          : "rounded-lg border border-border bg-surface p-4"
       }
     >
       <div className="flex items-center gap-1.5 text-xs text-muted">
@@ -184,17 +184,32 @@ function DayUsageChart({ data }: { data: DayUsage[] }) {
   );
 }
 
-function ModelTable({ usage }: { usage: UsageStats }) {
+function ModelTable({
+  usage,
+  showAgentBadges,
+}: {
+  usage: UsageStats;
+  showAgentBadges: boolean;
+}) {
   const t = useT();
   if (usage.byModel.length === 0) {
     return <div className="py-8 text-center text-xs text-muted">{t("noData")}</div>;
   }
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[900px] text-xs">
+      <table
+        className={cn(
+          "w-full text-xs",
+          showAgentBadges ? "min-w-[900px]" : "min-w-[820px]"
+        )}
+      >
         <thead>
           <tr className="border-b border-border text-muted">
-            <th className="pb-2 pr-2 text-left font-medium">{t("agentCol")}</th>
+            {showAgentBadges && (
+              <th className="pb-2 pr-2 text-left font-medium">
+                {t("agentCol")}
+              </th>
+            )}
             <th className="px-2 pb-2 text-left font-medium">{t("modelCol")}</th>
             <th className="px-2 pb-2 text-right font-medium">{t("messagesCol")}</th>
             <th className="px-2 pb-2 text-right font-medium">{t("totalTokensCol")}</th>
@@ -212,7 +227,11 @@ function ModelTable({ usage }: { usage: UsageStats }) {
               key={`${row.agent}:${row.model}`}
               className="border-b border-border/60 last:border-0"
             >
-              <td className="py-2 pr-2"><AgentBadge agent={row.agent} /></td>
+              {showAgentBadges && (
+                <td className="py-2 pr-2">
+                  <AgentBadge agent={row.agent} />
+                </td>
+              )}
               <td className="px-2 py-2">
                 <span
                   className="block max-w-[190px] truncate font-medium text-foreground"
@@ -243,7 +262,13 @@ function ModelTable({ usage }: { usage: UsageStats }) {
   );
 }
 
-function ProjectUsageList({ usage }: { usage: UsageStats }) {
+function ProjectUsageList({
+  usage,
+  showAgentBadges,
+}: {
+  usage: UsageStats;
+  showAgentBadges: boolean;
+}) {
   const t = useT();
   const top = useMemo(
     () =>
@@ -268,9 +293,13 @@ function ProjectUsageList({ usage }: { usage: UsageStats }) {
           <div className="flex min-w-0 items-start justify-between gap-3 text-xs">
             <div className="min-w-0">
               <div className="truncate font-medium text-foreground">{row.name}</div>
-              <div className="mt-1 flex flex-wrap gap-1">
-                {row.agents.map((agent) => <AgentBadge key={agent} agent={agent} />)}
-              </div>
+              {showAgentBadges && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {row.agents.map((agent) => (
+                    <AgentBadge key={agent} agent={agent} />
+                  ))}
+                </div>
+              )}
             </div>
             <span className="shrink-0 text-right text-muted">
               <span className="block">{t("tokenTotalSuffix", { value: formatTokens(totalTokens(row)) })}</span>
@@ -396,11 +425,21 @@ export function TokenStats({
       <div className="grid min-w-0 grid-cols-1 gap-3 xl:grid-cols-2">
         <Card className="min-w-0">
           <CardHeader><CardTitle>{t("byModel")}</CardTitle></CardHeader>
-          <CardContent><ModelTable usage={usage} /></CardContent>
+          <CardContent>
+            <ModelTable
+              usage={usage}
+              showAgentBadges={agentFilter === "all"}
+            />
+          </CardContent>
         </Card>
         <Card className="min-w-0">
           <CardHeader><CardTitle>{t("topCostFolders")}</CardTitle></CardHeader>
-          <CardContent><ProjectUsageList usage={usage} /></CardContent>
+          <CardContent>
+            <ProjectUsageList
+              usage={usage}
+              showAgentBadges={agentFilter === "all"}
+            />
+          </CardContent>
         </Card>
       </div>
     </section>

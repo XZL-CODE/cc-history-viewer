@@ -78,13 +78,13 @@ export function SearchResults() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-5 sm:px-6 sm:py-6">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
-        <div>
+    <div className="page-content pb-10">
+      <header className="sticky top-0 z-10 -mx-2 mb-3 flex min-w-0 items-start justify-between gap-4 border-b border-border bg-background/95 px-2 py-4 backdrop-blur-sm">
+        <div className="min-w-0">
           <h1 className="text-lg font-semibold text-foreground">
             {t("searchResultsTitle")}
           </h1>
-          <p className="mt-0.5 text-xs text-muted">
+          <p className="mt-0.5 truncate text-xs text-muted">
             {scope === "folder" && currentProjectName
               ? t("searchInFolder", { name: currentProjectName })
               : t("globalSearch")}
@@ -92,20 +92,19 @@ export function SearchResults() {
               ` · ${t("searchKeyword", { keyword: debouncedQuery })}`}
             {data &&
               ` · ${t("searchHits", { count: formatNumber(data.length) })}`}
-            {` · ${
-              searchAgentFilter === "all"
-                ? t("agentAll")
-                : searchAgentFilter === "claude"
-                  ? t("agentClaude")
-                  : t("agentCodex")
-            }`}
           </p>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <AgentFilterControl
-            value={searchAgentFilter}
-            onChange={setSearchAgentFilter}
-          />
+        <div className="flex shrink-0 items-end gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-muted max-[1080px]:hidden">
+              {t("searchAgentSource")}
+            </span>
+            <AgentFilterControl
+              value={searchAgentFilter}
+              onChange={setSearchAgentFilter}
+              ariaLabel={t("searchAgentSource")}
+            />
+          </div>
           <Button
             variant="outline"
             size="sm"
@@ -120,7 +119,7 @@ export function SearchResults() {
             {t("exportSearchResults")}
           </Button>
         </div>
-      </div>
+      </header>
 
       {exportError && (
         <p className="mb-3 text-xs text-danger">

@@ -4,30 +4,30 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #f5f5f7;
+  --background: #f4f5f7;
   --surface: #ffffff;
-  --surface-2: #eeeef1;
-  --foreground: #1b1b20;
-  --muted: #6a6a76;
-  --border: #e3e3e8;
-  --accent: #6d5efc;
+  --surface-2: #eff0f3;
+  --foreground: #1e222a;
+  --muted: #6d7380;
+  --border: #dde0e6;
+  --accent: #6757f5;
   --accent-fg: #ffffff;
-  --ring: #6d5efc;
+  --ring: #6757f5;
   --danger: #e5484d;
   --success: #2f9e63;
   --warning: #d98324;
 }
 
 .dark {
-  --background: #0d0d11;
-  --surface: #16161c;
-  --surface-2: #1e1e26;
-  --foreground: #e8e8ef;
-  --muted: #8a8a98;
-  --border: #292932;
-  --accent: #8b7dff;
-  --accent-fg: #0d0d11;
-  --ring: #8b7dff;
+  --background: #111217;
+  --surface: #181a20;
+  --surface-2: #252831;
+  --foreground: #ebedf2;
+  --muted: #9ca2ae;
+  --border: #2e313a;
+  --accent: #8a7cff;
+  --accent-fg: #111217;
+  --ring: #8a7cff;
   --danger: #ff6369;
   --success: #3dd68c;
   --warning: #f0a44a;
@@ -72,6 +72,23 @@ body {
     "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
+}
+
+button,
+input,
+select {
+  letter-spacing: 0;
+}
+
+.page-content {
+  width: min(1040px, calc(100% - 48px));
+  margin-inline: auto;
+}
+
+@media (max-width: 1080px) {
+  .page-content {
+    width: calc(100% - 32px);
+  }
 }
 
 ::-webkit-scrollbar {

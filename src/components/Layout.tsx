@@ -3,8 +3,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Languages,
-  Layers,
-  Menu,
+  Layers3,
   RefreshCw,
   Settings,
   Terminal,
@@ -13,12 +12,12 @@ import { useStore } from "@/store";
 import { useLang, useT } from "@/i18n";
 import { api } from "@/lib/api";
 import { cn, decodePath } from "@/lib/utils";
+import { SearchResults } from "@/pages/SearchResults";
 import { SearchBar } from "./SearchBar";
 import { SettingsDialog } from "./SettingsDialog";
 import { Sidebar } from "./Sidebar";
 import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "./ui";
-import { SearchResults } from "@/pages/SearchResults";
 
 export function Layout() {
   const {
@@ -27,6 +26,7 @@ export function Layout() {
     setIncludeCommands,
     setQuery,
     setCurrentProject,
+    setProjectAgentFilter,
     setScope,
   } = useStore();
   const queryClient = useQueryClient();
@@ -36,21 +36,25 @@ export function Layout() {
   const { lang, setLang } = useLang();
   const [refreshing, setRefreshing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // 根据路由派生「当前文件夹」，使其不受搜索时页面卸载的影响
+  // 路由进入新文件夹时登记搜索范围，并按约定重置详情筛选。
   useEffect(() => {
-    setSidebarOpen(false);
-    const m = location.pathname.match(/^\/project\/(.+)$/);
-    if (m) {
-      const path = decodePath(m[1]);
+    const match = location.pathname.match(/^\/project\/(.+)$/);
+    if (match) {
+      const path = decodePath(match[1]);
       const name = path.split("/").filter(Boolean).pop() || path;
       setCurrentProject(path, name);
+      setProjectAgentFilter("all");
       setScope("folder");
     } else {
       setCurrentProject(null);
     }
-  }, [location.pathname, setCurrentProject, setScope]);
+  }, [
+    location.pathname,
+    setCurrentProject,
+    setProjectAgentFilter,
+    setScope,
+  ]);
 
   const searching = query.trim().length > 0;
 
@@ -60,92 +64,87 @@ export function Layout() {
       await api.refreshIndex();
       await queryClient.invalidateQueries();
     } catch {
-      // 刷新失败时静默，下次命令会自动重试
+      // 刷新失败时静默，下次命令会自动重试。
     } finally {
       setRefreshing(false);
     }
   };
 
   return (
-    <div className="flex h-screen min-w-0 flex-col">
-      <header className="shrink-0 border-b border-border bg-surface">
-        <div className="flex h-14 min-w-0 items-center gap-1.5 px-3 sm:gap-2 sm:px-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setSidebarOpen(true)}
-            title={t("openNavigation")}
-            className="md:hidden"
-          >
-            <Menu size={17} />
-          </Button>
+    <div className="grid h-screen min-w-0 grid-rows-[56px_minmax(0,1fr)]">
+      <header className="grid min-w-0 grid-cols-[264px_minmax(0,1fr)] border-b border-border bg-surface max-[1220px]:grid-cols-[248px_minmax(0,1fr)]">
+        <button
+          type="button"
+          onClick={() => {
+            setQuery("");
+            navigate("/");
+          }}
+          className="flex min-w-0 items-center gap-2.5 px-3.5 text-left transition-colors hover:bg-surface-2/60"
+          title={t("backHome")}
+          aria-label={t("backHome")}
+        >
+          <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg bg-accent text-accent-fg">
+            <Layers3 size={17} />
+          </span>
+          <span className="truncate text-sm font-semibold text-foreground max-[1080px]:hidden">
+            Coding Agent History Viewer
+          </span>
+        </button>
 
-          <button
-            onClick={() => {
-              setQuery("");
-              navigate("/");
-            }}
-            className="flex shrink-0 items-center gap-2"
-            title={t("backHome")}
-          >
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-accent-fg">
-              <Layers size={16} />
-            </span>
-            <span className="hidden text-sm font-semibold text-foreground xl:inline">
-              Coding Agent History Viewer
-            </span>
-          </button>
-
-          <div className="hidden min-w-0 flex-1 md:block">
+        <div className="flex min-w-0 items-center gap-1.5 px-3 py-2">
+          <div className="min-w-0 flex-1">
             <SearchBar />
           </div>
 
           <button
+            type="button"
             onClick={() => setIncludeCommands(!includeCommands)}
-            title={includeCommands ? t("commandsShownTitle") : t("commandsHiddenTitle")}
+            title={
+              includeCommands
+                ? t("commandsShownTitle")
+                : t("commandsHiddenTitle")
+            }
             className={cn(
               "flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors",
               includeCommands
                 ? "border-accent/40 bg-accent/15 text-accent"
-                : "border-border text-muted hover:text-foreground"
+                : "border-border text-muted hover:bg-surface-2 hover:text-foreground"
             )}
           >
             <Terminal size={14} />
-            <span className="hidden xl:inline">{t("commandsToggle")}</span>
+            <span className="max-[1220px]:hidden">{t("commandsToggle")}</span>
           </button>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handleRefresh}
-          disabled={refreshing}
-          title={t("refreshTitle")}
-        >
-          <RefreshCw size={16} className={cn(refreshing && "animate-spin")} />
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            title={t("refreshTitle")}
+          >
+            <RefreshCw size={16} className={cn(refreshing && "animate-spin")} />
+          </Button>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setSettingsOpen(true)}
-          title={t("settingsButtonTitle")}
-        >
-          <Settings size={16} />
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSettingsOpen(true)}
+            title={t("settingsButtonTitle")}
+          >
+            <Settings size={16} />
+          </Button>
 
           <button
+            type="button"
             onClick={() => setLang(lang === "zh" ? "en" : "zh")}
             title={t("switchLanguage")}
-            className="flex h-9 shrink-0 items-center gap-1 rounded-lg border border-border px-2 text-xs font-medium text-muted transition-colors hover:text-foreground"
+            className="flex h-9 shrink-0 items-center gap-1 rounded-lg border border-border px-2 text-xs font-medium text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
           >
             <Languages size={14} />
-            <span className="hidden xl:inline">{t("langBadge")}</span>
+            <span className="max-[1220px]:hidden">{t("langBadge")}</span>
           </button>
 
           <ThemeToggle />
-        </div>
-        <div className="px-3 pb-2 md:hidden">
-          <SearchBar />
         </div>
       </header>
 
@@ -154,18 +153,9 @@ export function Layout() {
         onClose={() => setSettingsOpen(false)}
       />
 
-      {sidebarOpen && (
-        <button
-          type="button"
-          aria-label={t("closeNavigation")}
-          onClick={() => setSidebarOpen(false)}
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
-        />
-      )}
-
-      <div className="flex min-w-0 flex-1 overflow-hidden">
-        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-        <main className="min-w-0 flex-1 overflow-y-auto">
+      <div className="grid min-h-0 min-w-0 grid-cols-[264px_minmax(0,1fr)] max-[1220px]:grid-cols-[248px_minmax(0,1fr)]">
+        <Sidebar />
+        <main className="min-h-0 min-w-0 overflow-y-auto bg-background">
           {searching ? <SearchResults /> : <Outlet />}
         </main>
       </div>

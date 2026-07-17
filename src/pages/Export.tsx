@@ -12,7 +12,6 @@ import { useExportPreview, useProjects, useStats } from "@/hooks/queries";
 import { api, errMessage } from "@/lib/api";
 import { useLang, useT, type DictKey } from "@/i18n";
 import {
-  Badge,
   Button,
   Card,
   CardContent,
@@ -21,11 +20,10 @@ import {
   Spinner,
 } from "@/components/ui";
 import { cn, formatNumber, prettyPath } from "@/lib/utils";
-import type { ExportGroupBy, ExportResult } from "@/lib/types";
-import { useStore } from "@/store";
+import type { AgentFilter, ExportGroupBy, ExportResult } from "@/lib/types";
 import { AgentFilterControl } from "@/components/AgentBadge";
 
-const fmtDay = (d: Date) => format(d, "yyyy-MM-dd");
+const fmtDay = (date: Date) => format(date, "yyyy-MM-dd");
 
 const groupOptions: { value: ExportGroupBy; labelKey: DictKey }[] = [
   { value: "project", labelKey: "groupByProject" },
@@ -41,18 +39,18 @@ function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="flex flex-col gap-1.5">
+    <label className="flex min-w-0 flex-col gap-1.5">
       <span className="text-xs font-medium text-muted">{label}</span>
       {children}
     </label>
   );
 }
 
-const dateInputCls =
-  "h-9 rounded-lg border border-border bg-surface px-3 text-sm text-foreground outline-none transition-colors focus:border-accent";
+const fieldClass =
+  "h-9 w-full rounded-lg border border-border bg-surface-2/60 px-3 text-sm text-foreground outline-none transition-colors focus:border-accent focus:bg-surface focus:ring-2 focus:ring-ring/20";
 
 export function Export() {
-  const { agentFilter, setAgentFilter } = useStore();
+  const [agentFilter, setAgentFilter] = useState<AgentFilter>("all");
   const projectsQ = useProjects(agentFilter);
   const statsQ = useStats(agentFilter);
   const t = useT();
@@ -97,9 +95,9 @@ export function Export() {
     enabled: rangeValid,
   });
 
-  const preset = (s: Date, e: Date) => {
-    setStartDate(fmtDay(s));
-    setEndDate(fmtDay(e));
+  const preset = (start: Date, end: Date) => {
+    setStartDate(fmtDay(start));
+    setEndDate(fmtDay(end));
   };
 
   const presets: { labelKey: DictKey; run: () => void }[] = [
@@ -123,7 +121,7 @@ export function Export() {
     setError(null);
     setResult(null);
     try {
-      const res = await api.buildExport({
+      const response = await api.buildExport({
         startDate,
         endDate,
         project: project || null,
@@ -133,230 +131,254 @@ export function Export() {
         lang,
         write: true,
       });
-      setResult(res);
-    } catch (e) {
-      setError(errMessage(e));
+      setResult(response);
+    } catch (exportError) {
+      setError(errMessage(exportError));
     } finally {
       setExporting(false);
     }
   };
 
   const reveal = async () => {
-    if (result?.path) {
-      try {
-        await api.revealPath(result.path);
-      } catch {
-        /* 文件可能被移动，忽略 */
-      }
+    if (!result?.path) return;
+    try {
+      await api.revealPath(result.path);
+    } catch {
+      // 文件可能已被移动。
     }
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5 px-4 py-5 sm:px-6 sm:py-6">
-      <div>
-        <div className="flex items-center gap-2">
-          <Download size={18} className="text-accent" />
-          <h1 className="text-lg font-semibold text-foreground">
-            {t("navExport")}
-          </h1>
-        </div>
-        <p className="mt-1 text-xs text-muted">
-          {t("exportIntroPrefix")}
-          <span className="text-foreground">~/Downloads</span>
-          {t("exportIntroSuffix")}
-        </p>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("exportScope")}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Field label={t("agentScope")}>
-            <AgentFilterControl
-              value={agentFilter}
-              onChange={setAgentFilter}
-              className="self-start"
-            />
-          </Field>
-
-          {/* 日期 */}
-          <div className="flex flex-wrap items-end gap-3">
-            <Field label={t("startDate")}>
-              <input
-                type="date"
-                value={startDate}
-                max={endDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className={dateInputCls}
-              />
-            </Field>
-            <span className="pb-2 text-muted">~</span>
-            <Field label={t("endDate")}>
-              <input
-                type="date"
-                value={endDate}
-                min={startDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className={dateInputCls}
-              />
-            </Field>
-            <div className="flex flex-wrap items-center gap-1.5 pb-0.5">
-              {presets.map((p) => (
-                <button
-                  key={p.labelKey}
-                  onClick={p.run}
-                  className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent/40 hover:text-foreground"
-                >
-                  <Calendar size={12} />
-                  {t(p.labelKey)}
-                </button>
-              ))}
-            </div>
+    <div className="page-content space-y-5 py-6">
+      <header className="flex items-start justify-between gap-5">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <Download size={18} className="text-accent" />
+            <h1 className="text-xl font-semibold text-foreground">
+              {t("navExport")}
+            </h1>
           </div>
+          <p className="mt-1 text-xs text-muted">
+            {t("exportIntroPrefix")}
+            <span className="text-foreground">~/Downloads</span>
+            {t("exportIntroSuffix")}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-xs font-medium text-muted max-[1080px]:hidden">
+            {t("exportAgentSource")}
+          </span>
+          <AgentFilterControl
+            value={agentFilter}
+            onChange={setAgentFilter}
+            ariaLabel={t("exportAgentSource")}
+          />
+        </div>
+      </header>
 
-          {/* 文件夹 + 分组 */}
-          <div className="flex flex-wrap items-end gap-4">
-            <Field label={t("folderScope")}>
-              <select
-                value={project}
-                onChange={(e) => setProject(e.target.value)}
-                className={cn(
-                  dateInputCls,
-                  "w-full min-w-0 sm:min-w-[220px] sm:max-w-[360px]"
-                )}
-              >
-                <option value="">{t("allFolders")}</option>
-                {projectsQ.data?.map((p) => (
-                  <option key={p.path} value={p.path}>
-                    {t("folderOption", {
-                      name: p.name,
-                      count: formatNumber(p.promptCount),
-                    })}
-                  </option>
-                ))}
-              </select>
-            </Field>
+      <div className="grid min-w-0 grid-cols-[minmax(0,1.15fr)_minmax(300px,0.85fr)] items-start gap-4 max-[1200px]:grid-cols-1">
+        <div className="min-w-0 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("exportScope")}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label={t("startDate")}>
+                  <input
+                    type="date"
+                    value={startDate}
+                    max={endDate}
+                    onChange={(event) => setStartDate(event.target.value)}
+                    className={fieldClass}
+                  />
+                </Field>
+                <Field label={t("endDate")}>
+                  <input
+                    type="date"
+                    value={endDate}
+                    min={startDate}
+                    onChange={(event) => setEndDate(event.target.value)}
+                    className={fieldClass}
+                  />
+                </Field>
+              </div>
 
-            <Field label={t("groupByLabel")}>
-              <div className="flex items-center rounded-lg border border-border bg-surface p-0.5">
-                {groupOptions.map((o) => (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {presets.map((presetOption) => (
                   <button
-                    key={o.value}
-                    onClick={() => setGroupBy(o.value)}
-                    className={cn(
-                      "rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
-                      groupBy === o.value
-                        ? "bg-accent text-accent-fg"
-                        : "text-muted hover:text-foreground"
-                    )}
+                    key={presetOption.labelKey}
+                    type="button"
+                    onClick={presetOption.run}
+                    className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent/40 hover:bg-surface-2 hover:text-foreground"
                   >
-                    {t(o.labelKey)}
+                    <Calendar size={12} />
+                    {t(presetOption.labelKey)}
                   </button>
                 ))}
               </div>
-            </Field>
-          </div>
 
-          {/* 命令开关 */}
-          <button
-            onClick={() => setIncludeCommands((v) => !v)}
-            className={cn(
-              "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors",
-              includeCommands
-                ? "border-accent/40 bg-accent/15 text-accent"
-                : "border-border text-muted hover:text-foreground"
-            )}
-          >
-            <Terminal size={13} />
-            {includeCommands
-              ? t("includeSlashCommands")
-              : t("excludeSlashCommands")}
-          </button>
-        </CardContent>
-      </Card>
+              <Field label={t("folderScope")}>
+                <select
+                  value={project}
+                  onChange={(event) => setProject(event.target.value)}
+                  className={fieldClass}
+                >
+                  <option value="">{t("allFolders")}</option>
+                  {projectsQ.data?.map((projectOption) => (
+                    <option key={projectOption.path} value={projectOption.path}>
+                      {t("folderOption", {
+                        name: projectOption.name,
+                        count: formatNumber(projectOption.promptCount),
+                      })}
+                    </option>
+                  ))}
+                </select>
+              </Field>
 
-      {/* 统计 + 导出 */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm text-muted">
-          {!rangeValid ? (
-            <span className="text-danger">{t("invalidDateRange")}</span>
-          ) : previewQ.isLoading ? (
-            <>
-              <Spinner /> {t("counting")}
-            </>
-          ) : previewQ.isError ? (
-            <span className="text-danger">{errMessage(previewQ.error)}</span>
-          ) : (
-            <span>
-              {t("willExportPrefix")}{" "}
-              <span className="font-semibold text-foreground">
-                {formatNumber(count)}
-              </span>{" "}
-              {t("willExportSuffix", {
-                folders: formatNumber(previewQ.data?.folderCount ?? 0),
-                days: formatNumber(previewQ.data?.dayCount ?? 0),
-              })}
-            </span>
-          )}
-        </div>
-        <Button onClick={handleExport} disabled={!canExport}>
-          {exporting ? (
-            <Spinner className="border-accent-fg/40 border-t-accent-fg" />
-          ) : (
-            <Download size={16} />
-          )}
-          {t("exportAsMarkdown")}
-        </Button>
-      </div>
+              <Field label={t("groupByLabel")}>
+                <div className="flex w-fit max-w-full items-center rounded-lg border border-border bg-background p-0.5">
+                  {groupOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setGroupBy(option.value)}
+                      className={cn(
+                        "rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
+                        groupBy === option.value
+                          ? "bg-accent text-accent-fg"
+                          : "text-muted hover:text-foreground"
+                      )}
+                    >
+                      {t(option.labelKey)}
+                    </button>
+                  ))}
+                </div>
+              </Field>
 
-      {/* 导出结果 */}
-      {error && (
-        <Card className="border-danger/40">
-          <CardContent className="py-3 text-sm text-danger">
-            {t("exportFailed", { error })}
-          </CardContent>
-        </Card>
-      )}
-      {result?.path && (
-        <Card className="border-success/40 bg-success/5">
-          <CardContent className="flex flex-wrap items-center justify-between gap-3 py-3">
-            <div className="flex items-center gap-2 text-sm">
-              <Check size={16} className="text-success" />
-              <span className="text-foreground">
-                {t("exportedCountTo", {
-                  count: formatNumber(result.promptCount),
-                })}{" "}
-                <span className="font-medium">{prettyPath(result.path)}</span>
-              </span>
-            </div>
-            <Button variant="outline" size="sm" onClick={reveal}>
-              <FolderOpen size={14} />
-              {t("revealInFinder")}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 预览 */}
-      <div>
-        <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-foreground">
-          <FileText size={15} className="text-muted" />
-          {t("preview")}
-        </div>
-        {!rangeValid ? null : previewQ.isLoading ? (
-          <div className="h-64 animate-pulse rounded-xl bg-surface-2" />
-        ) : count === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center text-sm text-muted">
-              {t("noExportablePrompts")}
+              <button
+                type="button"
+                onClick={() => setIncludeCommands((value) => !value)}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors",
+                  includeCommands
+                    ? "border-accent/40 bg-accent/15 text-accent"
+                    : "border-border text-muted hover:bg-surface-2 hover:text-foreground"
+                )}
+              >
+                <Terminal size={13} />
+                {includeCommands
+                  ? t("includeSlashCommands")
+                  : t("excludeSlashCommands")}
+              </button>
             </CardContent>
           </Card>
-        ) : (
-          <pre className="max-h-[28rem] overflow-auto rounded-xl border border-border bg-surface p-4 text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words">
-            {previewQ.data?.preview}
-          </pre>
-        )}
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm text-muted">
+              {!rangeValid ? (
+                <span className="text-danger">{t("invalidDateRange")}</span>
+              ) : previewQ.isLoading ? (
+                <>
+                  <Spinner /> {t("counting")}
+                </>
+              ) : previewQ.isError ? (
+                <span className="text-danger">{errMessage(previewQ.error)}</span>
+              ) : (
+                <span>
+                  {t("willExportPrefix")}{" "}
+                  <span className="font-semibold text-foreground">
+                    {formatNumber(count)}
+                  </span>{" "}
+                  {t("willExportSuffix", {
+                    folders: formatNumber(previewQ.data?.folderCount ?? 0),
+                    days: formatNumber(previewQ.data?.dayCount ?? 0),
+                  })}
+                </span>
+              )}
+            </div>
+            <Button onClick={handleExport} disabled={!canExport}>
+              {exporting ? (
+                <Spinner className="border-accent-fg/40 border-t-accent-fg" />
+              ) : (
+                <Download size={16} />
+              )}
+              {t("exportAsMarkdown")}
+            </Button>
+          </div>
+
+          {error && (
+            <Card className="border-danger/40">
+              <CardContent className="py-3 text-sm text-danger">
+                {t("exportFailed", { error })}
+              </CardContent>
+            </Card>
+          )}
+
+          {result?.path && (
+            <Card className="border-success/40 bg-success/5">
+              <CardContent className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <Check size={16} className="text-success" />
+                  <span className="text-foreground">
+                    {t("exportedCountTo", {
+                      count: formatNumber(result.promptCount),
+                    })}{" "}
+                    <span className="font-medium">
+                      {prettyPath(result.path)}
+                    </span>
+                  </span>
+                </div>
+                <Button variant="outline" size="sm" onClick={reveal}>
+                  <FolderOpen size={14} />
+                  {t("revealInFinder")}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        <Card className="min-w-0">
+          <CardHeader className="flex items-start justify-between">
+            <div>
+              <CardTitle>{t("preview")}</CardTitle>
+              <p className="mt-1 text-xs text-muted">{t("exportScope")}</p>
+            </div>
+            <FileText size={17} className="text-muted" />
+          </CardHeader>
+          <CardContent>
+            {!rangeValid ? (
+              <div className="py-12 text-center text-sm text-danger">
+                {t("invalidDateRange")}
+              </div>
+            ) : previewQ.isLoading ? (
+              <div className="h-64 animate-pulse rounded-lg bg-surface-2" />
+            ) : previewQ.isError ? (
+              <div className="py-12 text-center text-sm text-danger">
+                {errMessage(previewQ.error)}
+              </div>
+            ) : count === 0 ? (
+              <div className="py-12 text-center text-sm text-muted">
+                {t("noExportablePrompts")}
+              </div>
+            ) : (
+              <>
+                <strong className="block text-[26px] font-semibold leading-tight text-foreground">
+                  {formatNumber(count)}
+                </strong>
+                <p className="mt-1 text-xs text-muted">
+                  {t("willExportSuffix", {
+                    folders: formatNumber(previewQ.data?.folderCount ?? 0),
+                    days: formatNumber(previewQ.data?.dayCount ?? 0),
+                  })}
+                </p>
+                <pre className="mt-5 max-h-[28rem] overflow-auto rounded-md bg-surface-2/70 p-3 text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words">
+                  {previewQ.data?.preview}
+                </pre>
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

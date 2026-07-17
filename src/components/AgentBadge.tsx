@@ -1,4 +1,4 @@
-import { Layers } from "lucide-react";
+import { Layers3 } from "lucide-react";
 import type { Agent, AgentFilter } from "@/lib/types";
 import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
@@ -16,6 +16,7 @@ export function AgentBadge({
     <Badge
       tone={agent === "claude" ? "warning" : "success"}
       className={className}
+      data-agent-badge={agent}
     >
       <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
       {agent === "claude" ? t("agentClaude") : t("agentCodex")}
@@ -30,21 +31,24 @@ export function AgentFilterControl({
   onChange,
   className,
   compact = false,
+  ariaLabel,
 }: {
   value: AgentFilter;
   onChange: (value: AgentFilter) => void;
   className?: string;
   compact?: boolean;
+  ariaLabel?: string;
 }) {
   const t = useT();
   return (
     <div
       className={cn(
-        "inline-flex max-w-full items-center rounded-lg border border-border bg-surface p-0.5",
+        "inline-flex max-w-full items-center rounded-lg border border-border bg-background p-0.5",
         className
       )}
       role="group"
-      aria-label={t("agentFilterLabel")}
+      aria-label={ariaLabel ?? t("agentFilterLabel")}
+      data-agent-filter={ariaLabel ?? t("agentFilterLabel")}
     >
       {OPTIONS.map((option) => {
         const fullLabel =
@@ -71,7 +75,7 @@ export function AgentFilterControl({
             )}
           >
             {option === "all" ? (
-              <Layers size={13} aria-hidden />
+              <Layers3 size={13} aria-hidden />
             ) : (
               <span
                 className={cn(
