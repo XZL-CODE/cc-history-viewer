@@ -1,0 +1,83 @@
+src/components/Layout.tsx
+  s_f3693ea4616edf::t_145ab739b51b1c 6,15,29,40,42-44,47,52-57,67,74-92,94-95,100,102-106,111,115,118-126,128-135,138,141,144,156-158
+src/components/SearchBar.tsx
+  s_f3693ea4616edf::t_495fbdfc13c39a 19,33,46,51,58,65,73
+index.html
+  s_f3693ea4616edf::t_e4f22ff30c4f5f 2,7-13
+src/i18n/en.ts
+  s_f3693ea4616edf::t_74df7b95d0e61a 24-27,106,112,125-128
+  s_f3693ea4616edf::t_e4f22ff30c4f5f 28,69
+  s_f3693ea4616edf::t_de0a4e694b4ec5 99-100,103-104,110,114,117-118
+src/components/PromptCard.tsx
+  s_f3693ea4616edf::t_6a90e84ed45578 56-60,129,138,156
+  s_f3693ea4616edf::t_498407dd7accd1 49,90-93
+src/pages/Export.tsx
+  s_f3693ea4616edf::t_96fdf6f09dee26 23,53,152
+  s_f3693ea4616edf::t_bd0ce1c8186162 26,42,49-50,98-100,124,134-136,143-147,153-165,167-177,179-205,207-225,227-237,239-261,263-266,269-275,277-307,310-316,318-337,341-345,347-379
+src/i18n/zh.ts
+  s_f3693ea4616edf::t_e4f22ff30c4f5f 29,68
+  s_f3693ea4616edf::t_de0a4e694b4ec5 98-99,102-103,109,113,116-117
+  s_f3693ea4616edf::t_74df7b95d0e61a 25-28,105,111,124-127
+src/components/Charts.tsx
+  s_f3693ea4616edf::t_7ebb7a2a2bac1f 49,62
+  s_f3693ea4616edf::t_de0a4e694b4ec5 41,43,48,64-66,68-69
+src/components/ui.tsx
+  s_f3693ea4616edf::t_f6490f0db067d0 75
+src/components/AgentBadge.tsx
+  s_f3693ea4616edf::t_3d733ad16cc203 1,19,34,40,46,50-51,78
+src/index.css
+  s_f3693ea4616edf::t_f6490f0db067d0 7,9-13,15,22-30,77-92
+  s_f3693ea4616edf::t_16c2b429cb403f 93
+src/components/StatsOverview.tsx
+  s_f3693ea4616edf::t_ac28fdef7ac3c3 3-5,12-31,38,43-44,47-53,55-64,77-84,86,88,90,93-94,97,101,104,108,111,115,118-122,125-131,133-135,137
+  s_f3693ea4616edf::t_7ebb7a2a2bac1f 85
+src/components/TokenStats.tsx
+  s_f3693ea4616edf::t_bd8ebd7f54efde 75-76
+  s_f3693ea4616edf::t_e4f22ff30c4f5f 187-193,200-205,208-212,230-234,265-271,296-302,428-433,437-442
+  s_f3693ea4616edf::t_0b2c290ca17b90 28
+src-tauri/tauri.conf.json
+  s_f3693ea4616edf::t_7dd5eb803ddb81 4
+  s_f3693ea4616edf::t_057ef5b40b44ad 17-20
+package.json
+  s_f3693ea4616edf::t_7dd5eb803ddb81 4
+src-tauri/Cargo.toml
+  s_f3693ea4616edf::t_7dd5eb803ddb81 3
+src/components/Sidebar.tsx
+  s_f3693ea4616edf::t_e4f22ff30c4f5f 55-60,119-120,122-131,158
+  s_f3693ea4616edf::t_e83c8afb6e947b 1,11-16,18-22,24-54,67-68,70-72,77-79,82-83,86-87,89-90,93-109,117,135,140,143-144,152,154-155,160,163-164,168-201
+src/components/SettingsDialog.tsx
+  s_f3693ea4616edf::t_bd8ebd7f54efde 155
+src/pages/ConversationDetail.tsx
+  s_f3693ea4616edf::t_bd8ebd7f54efde 95
+src/store.tsx
+  s_f3693ea4616edf::t_e8ec393f1a3511 9,56,58-60,62,64,66,107-114
+src/pages/Home.tsx
+  s_f3693ea4616edf::t_de0a4e694b4ec5 45,48-52,55,119,143-144,147-149,158-164
+  s_f3693ea4616edf::t_0155de06bb12f9 2-3,7,20,22,26-28,37-44,46-47,53-54,56-72,91-92,98-115,118,120-128,142,145-146,150-151,157,165,168,171,174,202,205,208,211,216,219
+  s_f3693ea4616edf::t_498d8965e82b64 172-173,175-201,203-204
+src/pages/SearchResults.tsx
+  s_f3693ea4616edf::t_e4f22ff30c4f5f 82-83,87
+  s_f3693ea4616edf::t_de0a4e694b4ec5 99
+  s_f3693ea4616edf::t_962afef300c221 81,97-98,100-107,122
+src/pages/ProjectPrompts.tsx
+  s_f3693ea4616edf::t_de0a4e694b4ec5 176
+  s_f3693ea4616edf::t_89b831831a7e44 72,138,143,175,177-184,187
+src-tauri/Cargo.lock
+  s_f3693ea4616edf::t_27d2f456eab45e 281
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "5f1bdc7f3fb58d57247cd84856e8668ade9c6d3f",
+  "prompts": {},
+  "sessions": {
+    "s_f3693ea4616edf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6df6-24f7-7eb1-b996-2a8cef33ec44",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "MacBookPro <abc10086xzl@gmail.com>"
+    }
+  }
+}
