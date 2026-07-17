@@ -1,4 +1,4 @@
-// 设置弹窗：配置 Claude 数据目录（数据源）。受控组件，无 portal。
+// 设置弹窗：分别配置 Claude Code 与 Codex 的本地数据目录。
 
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -11,6 +11,7 @@ import { Badge, Button, Input, Spinner } from "@/components/ui";
 
 const EMPTY_FORM: SettingsInput = {
   claudeDataDir: "",
+  codexDataDir: "",
   historyFile: "",
   projectsDir: "",
   sessionsDir: "",
@@ -28,7 +29,7 @@ function ResolvedRow({
   const t = useT();
   return (
     <div className="flex items-center gap-2 text-xs">
-      <span className="w-16 shrink-0 text-muted">{label}</span>
+      <span className="w-24 shrink-0 text-muted">{label}</span>
       <span
         className="min-w-0 flex-1 truncate text-foreground"
         title={path}
@@ -88,6 +89,7 @@ export function SettingsDialog({
     if (data) {
       setForm({
         claudeDataDir: data.claudeDataDir,
+        codexDataDir: data.codexDataDir,
         historyFile: data.historyFile,
         projectsDir: data.projectsDir,
         sessionsDir: data.sessionsDir,
@@ -107,6 +109,7 @@ export function SettingsDialog({
     if (!data) return false;
     return (
       form.claudeDataDir !== data.claudeDataDir ||
+      form.codexDataDir !== data.codexDataDir ||
       form.historyFile !== data.historyFile ||
       form.projectsDir !== data.projectsDir ||
       form.sessionsDir !== data.sessionsDir
@@ -149,7 +152,7 @@ export function SettingsDialog({
       />
 
       {/* 卡片 */}
-      <div className="relative max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-surface shadow-2xl">
+      <div className="relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-border bg-surface shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
           <h2 className="text-sm font-semibold text-foreground">
             {t("settingsTitle")}
@@ -177,59 +180,106 @@ export function SettingsDialog({
             </p>
           ) : (
             <>
-              <FormField
-                label={t("claudeDataDirLabel")}
-                value={form.claudeDataDir}
-                placeholder={t("claudeDataDirPlaceholder")}
-                onChange={setField("claudeDataDir")}
-              />
+              <section className="space-y-3 rounded-lg border border-border p-3">
+                <h3 className="text-xs font-semibold text-foreground">
+                  {t("claudeDataSource")}
+                </h3>
+                <FormField
+                  label={t("claudeDataDirLabel")}
+                  value={form.claudeDataDir}
+                  placeholder={t("claudeDataDirPlaceholder")}
+                  onChange={setField("claudeDataDir")}
+                />
 
-              <details className="rounded-lg border border-border">
-                <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-muted">
-                  {t("advancedOverrides")}
-                </summary>
-                <div className="space-y-3 px-3 pb-3 pt-1">
-                  <FormField
-                    label={t("historyFileLabel")}
-                    value={form.historyFile}
-                    placeholder={t("overridePlaceholder")}
-                    onChange={setField("historyFile")}
-                  />
-                  <FormField
-                    label={t("projectsDirLabel")}
-                    value={form.projectsDir}
-                    placeholder={t("overridePlaceholder")}
-                    onChange={setField("projectsDir")}
-                  />
-                  <FormField
-                    label={t("sessionsDirLabel")}
-                    value={form.sessionsDir}
-                    placeholder={t("overridePlaceholder")}
-                    onChange={setField("sessionsDir")}
-                  />
-                </div>
-              </details>
+                <details className="rounded-lg border border-border">
+                  <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-muted">
+                    {t("advancedOverrides")}
+                  </summary>
+                  <div className="space-y-3 px-3 pb-3 pt-1">
+                    <FormField
+                      label={t("historyFileLabel")}
+                      value={form.historyFile}
+                      placeholder={t("overridePlaceholder")}
+                      onChange={setField("historyFile")}
+                    />
+                    <FormField
+                      label={t("projectsDirLabel")}
+                      value={form.projectsDir}
+                      placeholder={t("overridePlaceholder")}
+                      onChange={setField("projectsDir")}
+                    />
+                    <FormField
+                      label={t("sessionsDirLabel")}
+                      value={form.sessionsDir}
+                      placeholder={t("overridePlaceholder")}
+                      onChange={setField("sessionsDir")}
+                    />
+                  </div>
+                </details>
+              </section>
+
+              <section className="space-y-3 rounded-lg border border-border p-3">
+                <h3 className="text-xs font-semibold text-foreground">
+                  {t("codexDataSource")}
+                </h3>
+                <FormField
+                  label={t("codexDataDirLabel")}
+                  value={form.codexDataDir}
+                  placeholder={t("codexDataDirPlaceholder")}
+                  onChange={setField("codexDataDir")}
+                />
+              </section>
 
               {data && (
-                <div className="space-y-2 rounded-lg bg-surface-2/60 p-3">
+                <div className="space-y-3 rounded-lg bg-surface-2/60 p-3">
                   <div className="text-xs font-medium text-foreground">
                     {t("resolvedPaths")}
                   </div>
-                  <ResolvedRow
-                    label={t("historyFileShort")}
-                    path={data.resolved.history}
-                    exists={data.resolved.historyExists}
-                  />
-                  <ResolvedRow
-                    label={t("projectsDirShort")}
-                    path={data.resolved.projects}
-                    exists={data.resolved.projectsExists}
-                  />
-                  <ResolvedRow
-                    label={t("sessionsDirShort")}
-                    path={data.resolved.sessions}
-                    exists={data.resolved.sessionsExists}
-                  />
+                  <div className="space-y-2">
+                    <div className="text-[11px] font-semibold text-muted">
+                      {t("claudeDataSource")}
+                    </div>
+                    <ResolvedRow
+                      label={t("historyFileShort")}
+                      path={data.resolved.claude.history}
+                      exists={data.resolved.claude.historyExists}
+                    />
+                    <ResolvedRow
+                      label={t("projectsDirShort")}
+                      path={data.resolved.claude.projects}
+                      exists={data.resolved.claude.projectsExists}
+                    />
+                    <ResolvedRow
+                      label={t("sessionsDirShort")}
+                      path={data.resolved.claude.sessions}
+                      exists={data.resolved.claude.sessionsExists}
+                    />
+                  </div>
+                  <div className="space-y-2 border-t border-border pt-3">
+                    <div className="text-[11px] font-semibold text-muted">
+                      {t("codexDataSource")}
+                    </div>
+                    <ResolvedRow
+                      label={t("rootDirShort")}
+                      path={data.resolved.codex.root}
+                      exists={data.resolved.codex.rootExists}
+                    />
+                    <ResolvedRow
+                      label={t("historyFileShort")}
+                      path={data.resolved.codex.history}
+                      exists={data.resolved.codex.historyExists}
+                    />
+                    <ResolvedRow
+                      label={t("sessionsDirShort")}
+                      path={data.resolved.codex.sessions}
+                      exists={data.resolved.codex.sessionsExists}
+                    />
+                    <ResolvedRow
+                      label={t("archivedSessionsDirShort")}
+                      path={data.resolved.codex.archivedSessions}
+                      exists={data.resolved.codex.archivedSessionsExists}
+                    />
+                  </div>
                 </div>
               )}
 

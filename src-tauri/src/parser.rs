@@ -1,9 +1,10 @@
 //! JSONL 数据解析：history.jsonl 与 projects/**/*.jsonl。
 
-use crate::models::{ChatMessage, ContentBlock, ConversationDetail};
+use crate::models::{Agent, ChatMessage, ContentBlock, ConversationDetail, NormalizedUsage};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::fs;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 /// 超过此长度的行不参与 prompt 提取（多为 base64 图片 / 工具结果）
@@ -14,6 +15,7 @@ const MAX_BLOCK_CHARS: usize = 24_000;
 /// 解析过程中的中间 prompt 表示（参与文件级缓存序列化）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawPrompt {
+    pub agent: Agent,
     pub text: String,
     pub project: String,
     pub timestamp: i64,
@@ -27,24 +29,29 @@ pub struct RawPrompt {
 /// resume / fork 会把旧消息行复制进新文件，跨文件聚合时必须按 dedup_key 全局去重。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UsageEntry {
+    pub agent: Agent,
     /// 去重键：优先 message.id，其次行 uuid，其次 requestId，最后 "{session_id}:{行号}"
     pub dedup_key: String,
     pub model: String,
     pub timestamp: i64,
-    pub input: u64,
-    pub output: u64,
-    pub cache_read: u64,
-    pub cache_creation: u64,
+    /// Cwd at the original event, retained across fork/resume copies.
+    pub project: String,
+    pub usage: NormalizedUsage,
 }
 
 /// 单个对话文件的解析结果（参与文件级缓存序列化）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConvFileResult {
+    pub agent: Agent,
     pub path: PathBuf,
     pub session_id: String,
     pub project: Option<String>,
     pub git_branch: Option<String>,
     pub version: Option<String>,
+    pub source: Option<String>,
+    pub models: Vec<String>,
+    /// Sub-agent prompts/sessions are hidden by default; usage remains included.
+    pub is_subagent: bool,
     pub started_at: i64,
     pub ended_at: i64,
     pub message_count: usize,
@@ -52,6 +59,47 @@ pub struct ConvFileResult {
     pub user_prompts: Vec<RawPrompt>,
     /// assistant 行的 token 用量（文件内已按 dedup_key 去重；跨文件去重在 indexer 完成）
     pub usage_entries: Vec<UsageEntry>,
+}
+
+/// Stream a JSONL file one physical line at a time. Invalid UTF-8 is made lossy only for that
+/// line, and callback-level JSON errors never stop subsequent records.
+pub(crate) fn for_each_jsonl_line(
+    path: &Path,
+    mut callback: impl FnMut(usize, &str),
+) -> std::io::Result<()> {
+    let file = File::open(path)?;
+    let mut reader = BufReader::new(file);
+    let mut bytes = Vec::new();
+    let mut line_no = 0usize;
+    loop {
+        bytes.clear();
+        let read = reader.read_until(b'\n', &mut bytes)?;
+        if read == 0 {
+            break;
+        }
+        if matches!(bytes.last(), Some(b'\n')) {
+            bytes.pop();
+        }
+        if matches!(bytes.last(), Some(b'\r')) {
+            bytes.pop();
+        }
+        let line = String::from_utf8_lossy(&bytes);
+        callback(line_no, line.trim());
+        line_no += 1;
+    }
+    Ok(())
+}
+
+/// Deterministic FNV-1a digest used for persisted IDs and copied-event fingerprints.
+pub(crate) fn stable_hash(parts: &[&str]) -> u64 {
+    let mut hash = 0xcbf29ce484222325u64;
+    for part in parts {
+        for byte in part.as_bytes().iter().copied().chain(std::iter::once(0xff)) {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+    }
+    hash
 }
 
 // ----------------------------- history.jsonl -----------------------------
@@ -68,41 +116,37 @@ struct HistoryLine {
 
 /// 解析 ~/.claude/history.jsonl
 pub fn parse_history(path: &Path) -> Vec<RawPrompt> {
-    let content = match fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(_) => return Vec::new(),
-    };
     let mut out = Vec::new();
-    for line in content.lines() {
-        let line = line.trim();
+    let _ = for_each_jsonl_line(path, |_, line| {
         if line.is_empty() {
-            continue;
+            return;
         }
         let parsed: HistoryLine = match serde_json::from_str(line) {
             Ok(v) => v,
-            Err(_) => continue,
+            Err(_) => return,
         };
         let display = match parsed.display {
             Some(d) => d,
-            None => continue,
+            None => return,
         };
         let timestamp = match parsed.timestamp {
             Some(t) => t,
-            None => continue,
+            None => return,
         };
         let project = match parsed.project {
             Some(p) => p,
-            None => continue,
+            None => return,
         };
         let text = normalize_image_placeholders(display.trim());
         if text.is_empty() {
-            continue;
+            return;
         }
         let pasted_count = match parsed.pasted_contents {
             Some(serde_json::Value::Object(m)) => m.len(),
             _ => 0,
         };
         out.push(RawPrompt {
+            agent: Agent::Claude,
             text,
             project,
             timestamp,
@@ -111,7 +155,7 @@ pub fn parse_history(path: &Path) -> Vec<RawPrompt> {
             pasted_count,
             from_history: true,
         });
-    }
+    });
     out
 }
 
@@ -165,10 +209,16 @@ fn iso_to_ms(s: &str) -> Option<i64> {
         .map(|dt| dt.timestamp_millis())
 }
 
+fn is_subagent_path(path: &Path) -> bool {
+    path.components()
+        .any(|component| component.as_os_str() == "subagents")
+}
+
 /// 解析单个对话文件，提取 user prompt 与会话摘要信息。
 pub fn parse_conversation_file(path: &Path) -> Option<ConvFileResult> {
-    let content = fs::read_to_string(path).ok()?;
+    let reader = BufReader::new(File::open(path).ok()?);
     let session_id = path.file_stem()?.to_string_lossy().to_string();
+    let file_is_subagent = is_subagent_path(path);
 
     let mut project: Option<String> = None;
     let mut git_branch: Option<String> = None;
@@ -179,10 +229,16 @@ pub fn parse_conversation_file(path: &Path) -> Option<ConvFileResult> {
     let mut first_prompt = String::new();
     let mut user_prompts: Vec<RawPrompt> = Vec::new();
     let mut usage_entries: Vec<UsageEntry> = Vec::new();
+    let mut models: HashSet<String> = HashSet::new();
     // 文件内去重：同一 API 响应会按内容块拆成多行（message.id 相同、usage 相同），只记一次
     let mut seen_usage_keys: HashSet<String> = HashSet::new();
 
-    for (line_no, line) in content.lines().enumerate() {
+    for (line_no, bytes) in reader.split(b'\n').enumerate() {
+        let bytes = match bytes {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let line = String::from_utf8_lossy(&bytes);
         let line = line.trim();
         if line.is_empty() {
             continue;
@@ -219,15 +275,34 @@ pub fn parse_conversation_file(path: &Path) -> Option<ConvFileResult> {
         if version.is_none() {
             version = parsed.version.clone();
         }
+        if let Some(model) = parsed
+            .message
+            .as_ref()
+            .and_then(|message| message.model.as_ref())
+            .filter(|model| !model.is_empty() && model.as_str() != "<synthetic>")
+        {
+            models.insert(model.clone());
+        }
 
         if ltype == "user" || ltype == "assistant" {
             message_count += 1;
         }
         // assistant 行（含 sidechain，同样计入用量）提取 token 用量
         if ltype == "assistant" {
-            if let Some(e) =
-                extract_usage_entry(&parsed, &session_id, line_no, ts, &mut seen_usage_keys)
-            {
+            let usage_project = parsed
+                .cwd
+                .clone()
+                .filter(|cwd| !cwd.is_empty())
+                .or_else(|| project.clone())
+                .unwrap_or_default();
+            if let Some(e) = extract_usage_entry(
+                &parsed,
+                &session_id,
+                line_no,
+                ts,
+                &usage_project,
+                &mut seen_usage_keys,
+            ) {
                 usage_entries.push(e);
             }
         }
@@ -269,6 +344,7 @@ pub fn parse_conversation_file(path: &Path) -> Option<ConvFileResult> {
             .or_else(|| project.clone())
             .unwrap_or_default();
         user_prompts.push(RawPrompt {
+            agent: Agent::Claude,
             text: prompt_text,
             project: line_project,
             timestamp,
@@ -297,14 +373,27 @@ pub fn parse_conversation_file(path: &Path) -> Option<ConvFileResult> {
                 p.project = proj.clone();
             }
         }
+        for entry in usage_entries.iter_mut() {
+            if entry.project.is_empty() {
+                entry.project = proj.clone();
+            }
+        }
     }
 
     Some(ConvFileResult {
+        agent: Agent::Claude,
         path: path.to_path_buf(),
         session_id,
         project,
         git_branch,
         version,
+        source: Some("cli".to_string()),
+        models: {
+            let mut models: Vec<String> = models.into_iter().collect();
+            models.sort();
+            models
+        },
+        is_subagent: file_is_subagent,
         started_at,
         ended_at,
         message_count,
@@ -314,13 +403,13 @@ pub fn parse_conversation_file(path: &Path) -> Option<ConvFileResult> {
     })
 }
 
-/// 从 assistant 行提取一条用量记录。
-/// 跳过：model 为空或 `<synthetic>` 的行、usage 缺失或四项全为 0 的行、文件内重复 dedup_key 的行。
+/// Extract normalized Claude usage from an assistant record.
 fn extract_usage_entry(
     line: &ConvLine,
-    session_id: &str,
-    line_no: usize,
+    _session_id: &str,
+    _line_no: usize,
     ts: Option<i64>,
+    project: &str,
     seen: &mut HashSet<String>,
 ) -> Option<UsageEntry> {
     let msg = line.message.as_ref()?;
@@ -329,39 +418,63 @@ fn extract_usage_entry(
         return None;
     }
     let u = msg.usage.as_ref()?;
-    let input = u.input_tokens.unwrap_or(0);
-    let output = u.output_tokens.unwrap_or(0);
-    let cache_creation = u.cache_creation_input_tokens.unwrap_or(0);
-    let cache_read = u.cache_read_input_tokens.unwrap_or(0);
-    if input == 0 && output == 0 && cache_creation == 0 && cache_read == 0 {
+    let usage = NormalizedUsage {
+        uncached_input: u.input_tokens.unwrap_or(0),
+        output: u.output_tokens.unwrap_or(0),
+        cache_creation: u.cache_creation_input_tokens.unwrap_or(0),
+        cache_read: u.cache_read_input_tokens.unwrap_or(0),
+        reasoning_output: 0,
+    };
+    if usage.total_tokens_including_cache() == 0 {
         return None;
     }
-    // 去重键优先级：message.id > 行 uuid > requestId > "{session_id}:{行号(1 基)}"
-    let dedup_key = msg
+    // IDs are preserved by Claude resume/fork. The content fingerprint fallback deliberately
+    // excludes file path and session id so copied history is still recognized.
+    let stable_id = msg
         .id
         .clone()
         .filter(|s| !s.is_empty())
         .or_else(|| line.uuid.clone().filter(|s| !s.is_empty()))
-        .or_else(|| line.request_id.clone().filter(|s| !s.is_empty()))
-        .unwrap_or_else(|| format!("{session_id}:{}", line_no + 1));
+        .or_else(|| line.request_id.clone().filter(|s| !s.is_empty()));
+    let dedup_key = stable_id
+        .map(|id| format!("claude:id:{id}"))
+        .unwrap_or_else(|| {
+            let content = msg
+                .content
+                .as_ref()
+                .and_then(|value| serde_json::to_string(value).ok())
+                .unwrap_or_default();
+            format!(
+                "claude:event:{:016x}",
+                stable_hash(&[
+                    &model,
+                    &ts.unwrap_or(0).to_string(),
+                    &usage.uncached_input.to_string(),
+                    &usage.cache_read.to_string(),
+                    &usage.cache_creation.to_string(),
+                    &usage.output.to_string(),
+                    &content,
+                ])
+            )
+        });
     if !seen.insert(dedup_key.clone()) {
         return None;
     }
     Some(UsageEntry {
+        agent: Agent::Claude,
         dedup_key,
         model,
         timestamp: ts.unwrap_or(0),
-        input,
-        output,
-        cache_read,
-        cache_creation,
+        project: project.to_string(),
+        usage,
     })
 }
 
 /// 解析对话文件的完整内容（用于「对话详情」页面）。
 pub fn parse_conversation_detail(path: &Path) -> Option<ConversationDetail> {
-    let content = fs::read_to_string(path).ok()?;
+    let reader = BufReader::new(File::open(path).ok()?);
     let session_id = path.file_stem()?.to_string_lossy().to_string();
+    let file_is_subagent = is_subagent_path(path);
 
     let mut project: Option<String> = None;
     let mut git_branch: Option<String> = None;
@@ -369,8 +482,14 @@ pub fn parse_conversation_detail(path: &Path) -> Option<ConversationDetail> {
     let mut started_at = i64::MAX;
     let mut ended_at = i64::MIN;
     let mut messages: Vec<ChatMessage> = Vec::new();
+    let mut models: HashSet<String> = HashSet::new();
 
-    for line in content.lines() {
+    for bytes in reader.split(b'\n') {
+        let bytes = match bytes {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let line = String::from_utf8_lossy(&bytes);
         let line = line.trim();
         if line.is_empty() {
             continue;
@@ -414,10 +533,11 @@ pub fn parse_conversation_detail(path: &Path) -> Option<ConversationDetail> {
                     let text = prettify_display_text(c);
                     if !text.is_empty() {
                         messages.push(ChatMessage {
+                            agent: Agent::Claude,
                             uuid: parsed.uuid.unwrap_or_default(),
                             role: "system".to_string(),
                             timestamp: ts.unwrap_or(0),
-                            is_sidechain: false,
+                            is_sidechain: file_is_subagent,
                             blocks: vec![ContentBlock {
                                 kind: "text".to_string(),
                                 text: Some(text),
@@ -437,16 +557,24 @@ pub fn parse_conversation_detail(path: &Path) -> Option<ConversationDetail> {
             Some(m) => m,
             None => continue,
         };
+        if let Some(model) = msg
+            .model
+            .as_ref()
+            .filter(|model| !model.is_empty() && model.as_str() != "<synthetic>")
+        {
+            models.insert(model.clone());
+        }
         let role = msg.role.clone().unwrap_or_else(|| ltype.to_string());
         let blocks = content_to_blocks(msg.content.as_ref());
         if blocks.is_empty() {
             continue;
         }
         messages.push(ChatMessage {
+            agent: Agent::Claude,
             uuid: parsed.uuid.unwrap_or_default(),
             role,
             timestamp: ts.unwrap_or(0),
-            is_sidechain: parsed.is_sidechain.unwrap_or(false),
+            is_sidechain: file_is_subagent || parsed.is_sidechain.unwrap_or(false),
             blocks,
         });
     }
@@ -459,12 +587,19 @@ pub fn parse_conversation_detail(path: &Path) -> Option<ConversationDetail> {
     }
 
     Some(ConversationDetail {
+        agent: Agent::Claude,
         session_id,
         project: project.unwrap_or_default(),
         git_branch,
         started_at,
         ended_at,
-        version,
+        cli_version: version,
+        source: Some("cli".to_string()),
+        models: {
+            let mut models: Vec<String> = models.into_iter().collect();
+            models.sort();
+            models
+        },
         messages,
     })
 }
@@ -620,6 +755,7 @@ fn extract_between(s: &str, open: &str, close: &str) -> Option<String> {
 /// 对话详情展示用的文本美化：
 /// - `<command-name>/foo</command-name>...<command-args>bar</command-args>` → "/foo bar"
 /// - 剥离 local-command-caveat 包裹块
+///
 /// 仅影响展示（parse_conversation_detail 不参与缓存），不改变索引/搜索的数据。
 fn prettify_display_text(s: &str) -> String {
     if s.contains("<command-name>") {
@@ -637,7 +773,9 @@ fn prettify_display_text(s: &str) -> String {
             }
         }
     }
-    strip_tag_blocks(s, "local-command-caveat").trim().to_string()
+    strip_tag_blocks(s, "local-command-caveat")
+        .trim()
+        .to_string()
 }
 
 /// 字符级截断
@@ -807,7 +945,10 @@ mod tests {
             "[Image: source: /broken"
         );
         // 普通文本不受影响
-        assert_eq!(normalize_image_placeholders("hello [Image] world"), "hello [Image] world");
+        assert_eq!(
+            normalize_image_placeholders("hello [Image] world"),
+            "hello [Image] world"
+        );
     }
 
     #[test]

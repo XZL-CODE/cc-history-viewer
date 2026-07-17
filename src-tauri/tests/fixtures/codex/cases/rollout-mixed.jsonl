@@ -1,0 +1,11 @@
+{"timestamp":"2026-07-12T10:00:00.000Z","type":"session_meta","payload":{"id":"codex-mixed-0001","timestamp":"2026-07-12T10:00:00.000Z","cwd":"/synthetic/project-mixed","originator":"codex_cli_rs","cli_version":"0.2.0-synthetic","source":"cli","model_provider":"openai"}}
+{"timestamp":"2026-07-12T10:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Legacy turn before the format upgrade."}]}}
+{"timestamp":"2026-07-12T10:00:02.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Legacy answer before the format upgrade."}]}}
+{"timestamp":"2026-07-12T10:10:00.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Current turn at the format transition."}]}}
+{"timestamp":"2026-07-12T10:10:01.000Z","type":"event_msg","payload":{"type":"user_message","message":"Current turn at the format transition.","images":[],"local_images":[]}}
+{"timestamp":"2026-07-12T10:10:02.000Z","type":"response_item","payload":{"type":"tool_search_call","call_id":"call-tool-search-mixed","query":"synthetic parser tool"}}
+{"timestamp":"2026-07-12T10:10:03.000Z","type":"response_item","payload":{"type":"tool_search_output","call_id":"call-tool-search-mixed","tools":[{"name":"synthetic.search","description":"A fabricated search tool."}]}}
+{"timestamp":"2026-07-12T10:10:04.000Z","type":"response_item","payload":{"type":"image_generation_call","id":"call-image-mixed","status":"completed","result":"synthetic-image-result","revised_prompt":"Synthetic revised image prompt."}}
+{"timestamp":"2026-07-12T10:10:05.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Legacy fallback after current events must be ignored."}]}}
+{"timestamp":"2026-07-12T10:11:00.000Z","type":"event_msg","payload":{"type":"user_message","message":"Second current event turn.","images":[],"local_images":[]}}
+{"timestamp":"2026-07-12T10:11:01.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Current answer after the format upgrade."}]}}

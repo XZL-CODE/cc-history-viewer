@@ -3,7 +3,12 @@ import { AlertTriangle } from "lucide-react";
 import { useStore } from "@/store";
 import { useIndexMeta, useRecentPrompts, useStats } from "@/hooks/queries";
 import { StatsOverview } from "@/components/StatsOverview";
-import { ActivityChart, HourChart, ProjectChart } from "@/components/Charts";
+import {
+  ActivityChart,
+  HourChart,
+  ProjectChart,
+  WeekdayChart,
+} from "@/components/Charts";
 import { TokenStats } from "@/components/TokenStats";
 import { PromptList } from "@/components/PromptList";
 import {
@@ -17,10 +22,11 @@ import {
 import { errMessage } from "@/lib/api";
 import { useT } from "@/i18n";
 import { absoluteTime, formatNumber } from "@/lib/utils";
+import { AgentFilterControl } from "@/components/AgentBadge";
 
 function StatsSkeleton() {
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+    <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
       {Array.from({ length: 6 }).map((_, i) => (
         <Skeleton key={i} className="h-[88px] w-full" />
       ))}
@@ -39,11 +45,11 @@ function ListSkeleton() {
 }
 
 export function Home() {
-  const { includeCommands } = useStore();
+  const { agentFilter, includeCommands, setAgentFilter } = useStore();
   const t = useT();
-  const statsQ = useStats();
+  const statsQ = useStats(agentFilter);
   const metaQ = useIndexMeta();
-  const recentQ = useRecentPrompts(24, includeCommands);
+  const recentQ = useRecentPrompts(24, includeCommands, agentFilter);
 
   // memo 保持引用稳定：PromptList 以 items 引用变化作为重置分批的信号
   const recentItems = useMemo(
@@ -52,12 +58,13 @@ export function Home() {
   );
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 px-6 py-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">
-          {t("overviewTitle")}
-        </h1>
-        <p className="mt-0.5 text-xs text-muted">
+    <div className="mx-auto max-w-5xl space-y-6 px-4 py-5 sm:px-6 sm:py-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold text-foreground">
+            {t("overviewTitle")}
+          </h1>
+          <p className="mt-0.5 text-xs text-muted">
           {metaQ.data
             ? [
                 t("indexMetaSummary", {
@@ -76,7 +83,9 @@ export function Home() {
                   : []),
               ].join(" · ")
             : t("loadingLocalData")}
-        </p>
+          </p>
+        </div>
+        <AgentFilterControl value={agentFilter} onChange={setAgentFilter} />
       </div>
 
       {statsQ.isLoading ? (
@@ -89,9 +98,9 @@ export function Home() {
         />
       ) : statsQ.data ? (
         <>
-          <StatsOverview stats={statsQ.data} />
+          <StatsOverview stats={statsQ.data} agentFilter={agentFilter} />
 
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-3 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle>{t("dailyActivity")}</CardTitle>
@@ -108,18 +117,25 @@ export function Home() {
                 <HourChart data={statsQ.data.byHour} />
               </CardContent>
             </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("weekdayDistribution")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <WeekdayChart data={statsQ.data.byWeekday} />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("topActiveFolders")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ProjectChart data={statsQ.data.topProjects} />
+              </CardContent>
+            </Card>
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("topActiveFolders")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ProjectChart data={statsQ.data.topProjects} />
-            </CardContent>
-          </Card>
-
-          <TokenStats usage={statsQ.data.usage} />
+          <TokenStats usage={statsQ.data.usage} agentFilter={agentFilter} />
         </>
       ) : null}
 

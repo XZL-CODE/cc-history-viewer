@@ -16,8 +16,8 @@ export function SearchBar() {
   const folderAvailable = !!currentProject;
 
   return (
-    <div className="flex flex-1 items-center gap-2">
-      <div className="relative w-full max-w-2xl">
+    <div className="flex min-w-0 flex-1 items-center gap-2">
+      <div className="relative min-w-0 flex-1">
         <Search
           size={15}
           className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
@@ -46,6 +46,7 @@ export function SearchBar() {
       <div className="flex shrink-0 items-center rounded-lg border border-border bg-surface p-0.5">
         <button
           onClick={() => setScope("global")}
+          title={t("scopeGlobal")}
           className={cn(
             "flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
             scope === "global"
@@ -54,12 +55,12 @@ export function SearchBar() {
           )}
         >
           <Globe size={13} />
-          {t("scopeGlobal")}
+          <span className="hidden lg:inline">{t("scopeGlobal")}</span>
         </button>
         <button
           disabled={!folderAvailable}
           onClick={() => folderAvailable && setScope("folder")}
-          title={folderAvailable ? "" : t("scopeFolderDisabledTitle")}
+          title={folderAvailable ? t("scopeFolder") : t("scopeFolderDisabledTitle")}
           className={cn(
             "flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
             scope === "folder"
@@ -69,7 +70,7 @@ export function SearchBar() {
           )}
         >
           <Folder size={13} />
-          {t("scopeFolder")}
+          <span className="hidden lg:inline">{t("scopeFolder")}</span>
         </button>
       </div>
     </div>

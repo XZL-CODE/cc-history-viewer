@@ -1,4 +1,5 @@
 // 模块声明为 pub：tests/ 下的集成测试（golden 测试）需要访问 parser 等模块。
+pub mod codex_parser;
 pub mod commands;
 pub mod export;
 pub mod indexer;

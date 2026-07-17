@@ -5,6 +5,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -64,6 +65,10 @@ const LangContext = createContext<LangContextValue>({
 
 export function LangProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<LangCode>(currentLang);
+
+  useEffect(() => {
+    document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  }, [lang]);
 
   const setLang = useCallback((next: LangCode) => {
     currentLang = next;

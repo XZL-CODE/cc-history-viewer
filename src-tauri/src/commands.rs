@@ -3,27 +3,28 @@
 use crate::export::{self, ExportParams, Lang};
 use crate::indexer::{self, AppIndex};
 use crate::models::*;
-use crate::parser;
-use crate::state::{
-    self, load_settings, resolve_data_paths, resolve_from_settings, AppState,
-};
+use crate::state::{self, load_settings, resolve_data_paths, resolve_from_settings, AppState};
+use crate::{codex_parser, parser};
+use std::cmp::Reverse;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager, State};
 
-/// 索引磁盘缓存文件路径（v2：文件级缓存）
+/// Agent-aware, file-level cache owned by this application.
 fn cache_file(app: &AppHandle) -> Option<PathBuf> {
     app.path()
         .app_data_dir()
         .ok()
-        .map(|d| d.join("index_cache_v2.json"))
+        .map(|d| d.join("index_cache_v5.json"))
 }
 
-/// 删除 v1 时代的旧缓存文件（结构已不兼容，留着只占磁盘）。
+/// Remove only obsolete cache files written by this application.
 fn cleanup_legacy_cache(app: &AppHandle) {
     if let Ok(dir) = app.path().app_data_dir() {
-        let legacy = dir.join("index_cache.json");
-        if legacy.exists() {
-            let _ = std::fs::remove_file(legacy);
+        for name in ["index_cache.json", "index_cache_v2.json"] {
+            let legacy = dir.join(name);
+            if legacy.exists() {
+                let _ = std::fs::remove_file(legacy);
+            }
         }
     }
 }
@@ -35,11 +36,15 @@ fn ensure_index(state: &AppState, app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
     let paths = resolve_data_paths(app)?;
-    if !paths.history.exists() && !paths.projects.exists() {
+    let claude_exists = paths.claude.history.is_file() || paths.claude.projects.is_dir();
+    let codex_exists = paths.codex.history.is_file()
+        || paths.codex.sessions.is_dir()
+        || paths.codex.archived_sessions.is_dir();
+    if !claude_exists && !codex_exists {
         return Err(format!(
-            "未找到数据源：{} 与 {} 均不存在。请在设置中检查数据目录配置。",
-            paths.history.display(),
-            paths.projects.display()
+            "No Claude or Codex history source was found (checked {} and {}).",
+            paths.claude.root.display(),
+            paths.codex.root.display()
         ));
     }
     cleanup_legacy_cache(app);
@@ -61,19 +66,21 @@ where
 
 fn sort_prompts(v: &mut [PromptEntry], sort: Option<&str>) {
     match sort {
-        Some("oldest") => v.sort_by(|a, b| a.timestamp.cmp(&b.timestamp)),
-        Some("longest") => v.sort_by(|a, b| b.char_count.cmp(&a.char_count)),
-        _ => v.sort_by(|a, b| b.timestamp.cmp(&a.timestamp)),
+        Some("oldest") => v.sort_by_key(|entry| entry.timestamp),
+        Some("longest") => v.sort_by_key(|entry| Reverse(entry.char_count)),
+        _ => v.sort_by_key(|entry| Reverse(entry.timestamp)),
     }
 }
 
 /// 文件夹（项目）列表
 #[tauri::command]
 pub fn get_projects(
+    agent_filter: Option<AgentFilter>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<Vec<ProjectInfo>, String> {
-    read_index(&state, &app, |idx| idx.projects.clone())
+    let filter = agent_filter.unwrap_or_default();
+    read_index(&state, &app, |idx| idx.projects_for(filter).to_vec())
 }
 
 /// 指定文件夹下的 prompt 列表
@@ -82,15 +89,18 @@ pub fn get_project_prompts(
     project: String,
     sort: Option<String>,
     include_commands: Option<bool>,
+    agent_filter: Option<AgentFilter>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<Vec<PromptEntry>, String> {
     let inc = include_commands.unwrap_or(true);
+    let filter = agent_filter.unwrap_or_default();
     read_index(&state, &app, |idx| {
         let mut v: Vec<PromptEntry> = idx
             .prompts
             .iter()
             .filter(|p| p.project == project)
+            .filter(|p| filter.includes(p.agent))
             .filter(|p| inc || !p.is_command)
             .cloned()
             .collect();
@@ -104,14 +114,17 @@ pub fn get_project_prompts(
 pub fn get_recent_prompts(
     limit: Option<usize>,
     include_commands: Option<bool>,
+    agent_filter: Option<AgentFilter>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<Vec<PromptEntry>, String> {
     let lim = limit.unwrap_or(30);
     let inc = include_commands.unwrap_or(true);
+    let filter = agent_filter.unwrap_or_default();
     read_index(&state, &app, |idx| {
         idx.prompts
             .iter()
+            .filter(|p| filter.includes(p.agent))
             .filter(|p| inc || !p.is_command)
             .take(lim)
             .cloned()
@@ -125,69 +138,86 @@ pub fn search_prompts(
     query: String,
     project_filter: Option<String>,
     include_commands: Option<bool>,
+    agent_filter: Option<AgentFilter>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<Vec<SearchResult>, String> {
     let inc = include_commands.unwrap_or(true);
+    let filter = agent_filter.unwrap_or_default();
     read_index(&state, &app, |idx| {
-        indexer::search(&idx.prompts, &query, project_filter.as_deref(), inc)
+        indexer::search(&idx.prompts, &query, project_filter.as_deref(), inc, filter)
     })
 }
 
 /// 统计信息
 #[tauri::command]
-pub fn get_stats(state: State<'_, AppState>, app: AppHandle) -> Result<AppStats, String> {
-    read_index(&state, &app, |idx| idx.stats.clone())
+pub fn get_stats(
+    agent_filter: Option<AgentFilter>,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<AppStats, String> {
+    let filter = agent_filter.unwrap_or_default();
+    read_index(&state, &app, |idx| idx.stats_for(filter).clone())
 }
 
 /// 指定文件夹下的会话列表
 #[tauri::command]
 pub fn get_project_sessions(
     project: String,
+    agent_filter: Option<AgentFilter>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<Vec<SessionSummary>, String> {
+    let filter = agent_filter.unwrap_or_default();
     read_index(&state, &app, |idx| {
         let mut v: Vec<SessionSummary> = idx
             .sessions
             .iter()
             .filter(|s| s.project == project)
+            .filter(|s| filter.includes(s.agent))
             .cloned()
             .collect();
-        v.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+        v.sort_by_key(|session| Reverse(session.started_at));
         v
     })
 }
 
 /// 按 sessionId 找到对话文件路径
-fn session_file(state: &AppState, app: &AppHandle, session_id: &str) -> Result<String, String> {
+fn session_file(
+    state: &AppState,
+    app: &AppHandle,
+    agent: Agent,
+    session_id: &str,
+) -> Result<String, String> {
     ensure_index(state, app)?;
     let guard = state.index.lock().map_err(|e| e.to_string())?;
     let idx = guard.as_ref().ok_or("索引尚未就绪")?;
     idx.session_files
-        .get(session_id)
+        .get(&(agent, session_id.to_string()))
         .cloned()
-        .ok_or_else(|| format!("找不到会话文件：{session_id}"))
+        .ok_or_else(|| format!("Conversation not found: {}:{session_id}", agent.as_str()))
 }
 
 /// 单个会话的完整对话详情
 #[tauri::command]
 pub fn get_conversation(
     session_id: String,
+    agent: Option<Agent>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<ConversationDetail, String> {
-    let file = session_file(&state, &app, &session_id)?;
-    parser::parse_conversation_detail(Path::new(&file))
-        .ok_or_else(|| "对话文件解析失败".to_string())
+    let agent = agent.unwrap_or(Agent::Claude);
+    let file = session_file(&state, &app, agent, &session_id)?;
+    match agent {
+        Agent::Claude => parser::parse_conversation_detail(Path::new(&file)),
+        Agent::Codex => codex_parser::parse_rollout_detail(Path::new(&file)),
+    }
+    .ok_or_else(|| "对话文件解析失败".to_string())
 }
 
 /// 索引元信息
 #[tauri::command]
-pub fn get_index_meta(
-    state: State<'_, AppState>,
-    app: AppHandle,
-) -> Result<IndexMeta, String> {
+pub fn get_index_meta(state: State<'_, AppState>, app: AppHandle) -> Result<IndexMeta, String> {
     read_index(&state, &app, |idx| IndexMeta {
         built_at: idx.built_at,
         from_cache: idx.from_cache,
@@ -198,10 +228,7 @@ pub fn get_index_meta(
 
 /// 强制重建索引（忽略缓存全量重解析）
 #[tauri::command]
-pub fn refresh_index(
-    state: State<'_, AppState>,
-    app: AppHandle,
-) -> Result<IndexMeta, String> {
+pub fn refresh_index(state: State<'_, AppState>, app: AppHandle) -> Result<IndexMeta, String> {
     let paths = resolve_data_paths(&app)?;
     let cache = cache_file(&app);
     let idx = indexer::build_and_cache(&paths, cache.as_deref());
@@ -223,17 +250,30 @@ fn settings_view(s: &SettingsInput, config_path: &Path) -> Result<SettingsView, 
     let paths = resolve_from_settings(s)?;
     Ok(SettingsView {
         claude_data_dir: s.claude_data_dir.clone(),
+        codex_data_dir: s.codex_data_dir.clone(),
         history_file: s.history_file.clone(),
         projects_dir: s.projects_dir.clone(),
         sessions_dir: s.sessions_dir.clone(),
         config_path: config_path.to_string_lossy().to_string(),
         resolved: ResolvedPaths {
-            history: paths.history.to_string_lossy().to_string(),
-            projects: paths.projects.to_string_lossy().to_string(),
-            sessions: paths.sessions.to_string_lossy().to_string(),
-            history_exists: paths.history.is_file(),
-            projects_exists: paths.projects.is_dir(),
-            sessions_exists: paths.sessions.is_dir(),
+            claude: ResolvedClaudePaths {
+                history: paths.claude.history.to_string_lossy().to_string(),
+                projects: paths.claude.projects.to_string_lossy().to_string(),
+                sessions: paths.claude.sessions.to_string_lossy().to_string(),
+                history_exists: paths.claude.history.is_file(),
+                projects_exists: paths.claude.projects.is_dir(),
+                sessions_exists: paths.claude.sessions.is_dir(),
+            },
+            codex: ResolvedCodexPaths {
+                root: paths.codex.root.to_string_lossy().to_string(),
+                history: paths.codex.history.to_string_lossy().to_string(),
+                sessions: paths.codex.sessions.to_string_lossy().to_string(),
+                archived_sessions: paths.codex.archived_sessions.to_string_lossy().to_string(),
+                root_exists: paths.codex.root.is_dir(),
+                history_exists: paths.codex.history.is_file(),
+                sessions_exists: paths.codex.sessions.is_dir(),
+                archived_sessions_exists: paths.codex.archived_sessions.is_dir(),
+            },
         },
     })
 }
@@ -274,6 +314,7 @@ pub fn build_prompt_export(
     group_by: Option<String>,
     write: bool,
     lang: Option<String>,
+    agent_filter: Option<AgentFilter>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<ExportResult, String> {
@@ -286,6 +327,7 @@ pub fn build_prompt_export(
     }
     let group = group_by.unwrap_or_else(|| "project".to_string());
     let lang = Lang::from_opt(lang.as_deref());
+    let filter = agent_filter.unwrap_or_default();
 
     let data = read_index(&state, &app, |idx| {
         export::build(
@@ -299,6 +341,7 @@ pub fn build_prompt_export(
                 start_date: &start_date,
                 end_date: &end_date,
                 lang,
+                agent_filter: filter,
             },
         )
     })?;
@@ -308,7 +351,7 @@ pub fn build_prompt_export(
         if data.prompt_count == 0 {
             return Err("该范围内没有可导出的 prompt。".to_string());
         }
-        let base = format!("CC-Prompts_{start_date}_{end_date}");
+        let base = format!("Coding-Agent-Prompts_{start_date}_{end_date}");
         let target = unique_export_path(&base);
         std::fs::write(&target, &data.markdown).map_err(|e| format!("写入文件失败：{e}"))?;
         path = Some(target.to_string_lossy().to_string());
@@ -326,22 +369,26 @@ pub fn build_prompt_export(
 /// 把当前搜索命中的全部 prompt 导出为 Markdown（按文件夹分组）。
 /// write=false 仅生成预览与统计；write=true 额外写入 ~/Downloads。
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn export_search_results(
     query: String,
     project_filter: Option<String>,
     include_commands: bool,
     write: bool,
     lang: Option<String>,
+    agent_filter: Option<AgentFilter>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<ExportResult, String> {
     let lang = Lang::from_opt(lang.as_deref());
+    let filter = agent_filter.unwrap_or_default();
     let data = read_index(&state, &app, |idx| {
         let results = indexer::search(
             &idx.prompts,
             &query,
             project_filter.as_deref(),
             include_commands,
+            filter,
         );
         let items: Vec<&PromptEntry> = results.iter().map(|r| &r.entry).collect();
         export::build_search_export(&items, &query, project_filter.as_deref(), lang)
@@ -353,7 +400,10 @@ pub fn export_search_results(
             return Err("没有可导出的搜索结果。".to_string());
         }
         let date = chrono::Local::now().format("%Y-%m-%d");
-        let base = format!("CC-Search_{}_{date}", sanitize_for_filename(&query));
+        let base = format!(
+            "Coding-Agent-Search_{}_{date}",
+            sanitize_for_filename(&query)
+        );
         let target = unique_export_path(&base);
         std::fs::write(&target, &data.markdown).map_err(|e| format!("写入文件失败：{e}"))?;
         path = Some(target.to_string_lossy().to_string());
@@ -387,15 +437,20 @@ fn sanitize_for_filename(q: &str) -> String {
 #[tauri::command]
 pub fn export_conversation(
     session_id: String,
+    agent: Option<Agent>,
     include_tools: bool,
     write: bool,
     lang: Option<String>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<ConversationExportResult, String> {
-    let file = session_file(&state, &app, &session_id)?;
-    let detail = parser::parse_conversation_detail(Path::new(&file))
-        .ok_or_else(|| "对话文件解析失败".to_string())?;
+    let agent = agent.unwrap_or(Agent::Claude);
+    let file = session_file(&state, &app, agent, &session_id)?;
+    let detail = match agent {
+        Agent::Claude => parser::parse_conversation_detail(Path::new(&file)),
+        Agent::Codex => codex_parser::parse_rollout_detail(Path::new(&file)),
+    }
+    .ok_or_else(|| "对话文件解析失败".to_string())?;
     let lang = Lang::from_opt(lang.as_deref());
     let markdown = export::build_conversation_markdown(&detail, include_tools, lang);
 
@@ -403,7 +458,7 @@ pub fn export_conversation(
     if write {
         let short_id: String = session_id.chars().take(8).collect();
         let date = chrono::Local::now().format("%Y-%m-%d");
-        let base = format!("CC-Conversation_{short_id}_{date}");
+        let base = format!("{}-Conversation_{short_id}_{date}", agent.as_str());
         let target = unique_export_path(&base);
         std::fs::write(&target, &markdown).map_err(|e| format!("写入文件失败：{e}"))?;
         path = Some(target.to_string_lossy().to_string());

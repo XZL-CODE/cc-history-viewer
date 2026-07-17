@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { format, startOfMonth, subDays } from "date-fns";
 import {
   Calendar,
@@ -22,6 +22,8 @@ import {
 } from "@/components/ui";
 import { cn, formatNumber, prettyPath } from "@/lib/utils";
 import type { ExportGroupBy, ExportResult } from "@/lib/types";
+import { useStore } from "@/store";
+import { AgentFilterControl } from "@/components/AgentBadge";
 
 const fmtDay = (d: Date) => format(d, "yyyy-MM-dd");
 
@@ -50,8 +52,9 @@ const dateInputCls =
   "h-9 rounded-lg border border-border bg-surface px-3 text-sm text-foreground outline-none transition-colors focus:border-accent";
 
 export function Export() {
-  const projectsQ = useProjects();
-  const statsQ = useStats();
+  const { agentFilter, setAgentFilter } = useStore();
+  const projectsQ = useProjects(agentFilter);
+  const statsQ = useStats(agentFilter);
   const t = useT();
   const { lang } = useLang();
 
@@ -66,6 +69,21 @@ export function Export() {
   const [result, setResult] = useState<ExportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (
+      project &&
+      projectsQ.data &&
+      !projectsQ.data.some((item) => item.path === project)
+    ) {
+      setProject("");
+    }
+  }, [project, projectsQ.data]);
+
+  useEffect(() => {
+    setResult(null);
+    setError(null);
+  }, [agentFilter, endDate, groupBy, includeCommands, project, startDate]);
+
   const rangeValid = startDate <= endDate;
 
   const previewQ = useExportPreview({
@@ -74,6 +92,7 @@ export function Export() {
     project: project || null,
     includeCommands,
     groupBy,
+    agentFilter,
     lang,
     enabled: rangeValid,
   });
@@ -110,6 +129,7 @@ export function Export() {
         project: project || null,
         includeCommands,
         groupBy,
+        agentFilter,
         lang,
         write: true,
       });
@@ -132,7 +152,7 @@ export function Export() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5 px-6 py-6">
+    <div className="mx-auto max-w-4xl space-y-5 px-4 py-5 sm:px-6 sm:py-6">
       <div>
         <div className="flex items-center gap-2">
           <Download size={18} className="text-accent" />
@@ -152,6 +172,14 @@ export function Export() {
           <CardTitle>{t("exportScope")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <Field label={t("agentScope")}>
+            <AgentFilterControl
+              value={agentFilter}
+              onChange={setAgentFilter}
+              className="self-start"
+            />
+          </Field>
+
           {/* 日期 */}
           <div className="flex flex-wrap items-end gap-3">
             <Field label={t("startDate")}>
@@ -193,7 +221,10 @@ export function Export() {
               <select
                 value={project}
                 onChange={(e) => setProject(e.target.value)}
-                className={cn(dateInputCls, "min-w-[220px] max-w-[360px]")}
+                className={cn(
+                  dateInputCls,
+                  "w-full min-w-0 sm:min-w-[220px] sm:max-w-[360px]"
+                )}
               >
                 <option value="">{t("allFolders")}</option>
                 {projectsQ.data?.map((p) => (

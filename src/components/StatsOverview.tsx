@@ -7,7 +7,7 @@ import {
   MessagesSquare,
   Terminal,
 } from "lucide-react";
-import type { AppStats } from "@/lib/types";
+import type { AgentFilter, AppStats } from "@/lib/types";
 import { useT } from "@/i18n";
 import { dayLabel, daysSpan, formatNumber } from "@/lib/utils";
 
@@ -28,7 +28,7 @@ function StatCard({
         {icon}
         {label}
       </div>
-      <div className="mt-1.5 text-2xl font-semibold tracking-tight text-foreground">
+      <div className="mt-1.5 text-2xl font-semibold text-foreground">
         {value}
       </div>
       {sub && <div className="mt-0.5 text-[11px] text-muted">{sub}</div>}
@@ -36,11 +36,17 @@ function StatCard({
   );
 }
 
-export function StatsOverview({ stats }: { stats: AppStats }) {
+export function StatsOverview({
+  stats,
+  agentFilter,
+}: {
+  stats: AppStats;
+  agentFilter: AgentFilter;
+}) {
   const t = useT();
   const span = daysSpan(stats.firstUse, stats.lastUse);
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+    <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
       <StatCard
         icon={<MessageSquare size={13} />}
         label={t("totalPromptsCard")}
@@ -76,12 +82,21 @@ export function StatsOverview({ stats }: { stats: AppStats }) {
       />
       <StatCard
         icon={<Hash size={13} />}
-        label={t("ccVersionsCard")}
-        value={formatNumber(stats.ccVersions.length)}
+        label={t("cliVersionsCard")}
+        value={formatNumber(stats.cliVersions.length)}
         sub={
-          stats.ccVersions[0]
-            ? t("latestVersion", { version: stats.ccVersions[0] })
-            : "—"
+          agentFilter === "all"
+            ? t("latestVersionsByAgent", {
+                claude:
+                  stats.cliVersions.find((v) => v.agent === "claude")
+                    ?.version ?? "—",
+                codex:
+                  stats.cliVersions.find((v) => v.agent === "codex")
+                    ?.version ?? "—",
+              })
+            : t("latestVersion", {
+                version: stats.cliVersions[0]?.version ?? "—",
+              })
         }
       />
     </div>

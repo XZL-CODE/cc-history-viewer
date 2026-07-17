@@ -14,9 +14,11 @@ export interface PromptListItem {
 export function PromptList({
   items,
   showProject = false,
+  showAgentBadge = true,
 }: {
   items: PromptListItem[];
   showProject?: boolean;
+  showAgentBadge?: boolean;
 }) {
   const t = useT();
   const [visible, setVisible] = useState(BATCH_SIZE);
@@ -55,6 +57,7 @@ export function PromptList({
             entry={it.entry}
             ranges={it.ranges}
             showProject={showProject}
+            showAgentBadge={showAgentBadge}
           />
         </div>
       ))}

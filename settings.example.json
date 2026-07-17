@@ -1,8 +1,10 @@
 {
-  "_说明": "把本文件复制为同目录的 settings.json 再填写。改完保存后，在应用右上角点刷新按钮重新扫描即可生效（无需重新编译）。",
-  "_用法": "claudeDataDir 填你的 .claude 目录（里面应含 history.jsonl / projects / sessions）。下面三项为可选的单独覆盖，留空则用 claudeDataDir 推导。全部留空 = 默认读取 ~/.claude。",
+  "_说明": "通常直接在应用设置页配置。本文件可复制为源码根目录 settings.json，保存后点击应用刷新按钮重新扫描，无需重新编译。",
+  "_Claude": "historyFile/projectsDir/sessionsDir 可单独覆盖；否则由 claudeDataDir 推导；全部留空时读取 ~/.claude。旧版字段继续兼容。",
+  "_Codex": "Codex 根目录优先级：codexDataDir > CODEX_HOME > ~/.codex。根目录内读取 history.jsonl、sessions/YYYY/MM/DD/rollout-*.jsonl 和 archived_sessions/*.jsonl。",
   "claudeDataDir": "",
   "historyFile": "",
   "projectsDir": "",
-  "sessionsDir": ""
+  "sessionsDir": "",
+  "codexDataDir": ""
 }

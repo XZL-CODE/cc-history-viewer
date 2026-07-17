@@ -1,13 +1,16 @@
 // 与 Rust src-tauri/src/models.rs 一一对应的类型定义。
 
-export type PromptSource = "history" | "conversation" | "both";
+export type Agent = "claude" | "codex";
+export type AgentFilter = Agent | "all";
+export type PromptOrigin = "history" | "conversation" | "both";
 
 export interface PromptEntry {
   id: string;
+  agent: Agent;
   text: string;
   project: string;
   timestamp: number;
-  source: PromptSource;
+  origin: PromptOrigin;
   sessionId: string | null;
   gitBranch: string | null;
   isCommand: boolean;
@@ -18,6 +21,7 @@ export interface PromptEntry {
 export interface ProjectInfo {
   path: string;
   name: string;
+  agents: Agent[];
   promptCount: number;
   commandCount: number;
   sessionCount: number;
@@ -32,6 +36,7 @@ export interface SearchResult {
 }
 
 export interface SessionSummary {
+  agent: Agent;
   sessionId: string;
   project: string;
   title: string;
@@ -39,6 +44,9 @@ export interface SessionSummary {
   endedAt: number;
   messageCount: number;
   gitBranch: string | null;
+  cliVersion: string | null;
+  source: string | null;
+  models: string[];
 }
 
 export type BlockKind =
@@ -57,6 +65,7 @@ export interface ContentBlock {
 
 export interface ChatMessage {
   uuid: string;
+  agent: Agent;
   role: "user" | "assistant" | "system";
   timestamp: number;
   isSidechain: boolean;
@@ -64,12 +73,15 @@ export interface ChatMessage {
 }
 
 export interface ConversationDetail {
+  agent: Agent;
   sessionId: string;
   project: string;
   gitBranch: string | null;
   startedAt: number;
   endedAt: number;
-  version: string | null;
+  cliVersion: string | null;
+  source: string | null;
+  models: string[];
   messages: ChatMessage[];
 }
 
@@ -91,44 +103,41 @@ export interface ProjectCount {
   count: number;
 }
 
+export interface CliVersion {
+  agent: Agent;
+  version: string;
+}
+
 /* ----------------------------- Token 用量统计 ----------------------------- */
 
-export interface ModelUsage {
-  model: string;
-  input: number;
-  output: number;
+export interface TokenUsageFields {
+  uncachedInput: number;
   cacheRead: number;
   cacheCreation: number;
-  messages: number;
+  output: number;
+  reasoningOutput: number;
+  totalTokensIncludingCache: number;
   estCostUsd: number | null;
+  unknownModelTokens: number;
 }
 
-export interface DayUsage {
+export interface ModelUsage extends TokenUsageFields {
+  agent: Agent;
+  model: string;
+  messages: number;
+}
+
+export interface DayUsage extends TokenUsageFields {
   day: string;
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheCreation: number;
-  estCostUsd: number;
 }
 
-export interface ProjectUsage {
+export interface ProjectUsage extends TokenUsageFields {
   path: string;
   name: string;
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheCreation: number;
-  estCostUsd: number;
+  agents: Agent[];
 }
 
-export interface UsageStats {
-  totalInput: number;
-  totalOutput: number;
-  totalCacheRead: number;
-  totalCacheCreation: number;
-  estCostUsd: number;
-  unknownModelTokens: number;
+export interface UsageStats extends TokenUsageFields {
   assistantMessages: number;
   byModel: ModelUsage[];
   byDay: DayUsage[];
@@ -149,7 +158,7 @@ export interface AppStats {
   byHour: HourCount[];
   byWeekday: WeekdayCount[];
   topProjects: ProjectCount[];
-  ccVersions: string[];
+  cliVersions: CliVersion[];
   usage: UsageStats;
 }
 
@@ -170,6 +179,7 @@ export interface ExportParams {
   project: string | null; // null = 全部文件夹
   includeCommands: boolean;
   groupBy: ExportGroupBy;
+  agentFilter: AgentFilter;
   write: boolean;
   lang?: string; // 导出文案语言："zh" | "en"，跟随界面语言
 }
@@ -194,18 +204,35 @@ export interface ConversationExportResult {
 
 export interface SettingsInput {
   claudeDataDir: string;
+  codexDataDir: string;
   historyFile: string;
   projectsDir: string;
   sessionsDir: string;
 }
 
-export interface ResolvedPaths {
+export interface ResolvedClaudePaths {
   history: string;
   projects: string;
   sessions: string;
   historyExists: boolean;
   projectsExists: boolean;
   sessionsExists: boolean;
+}
+
+export interface ResolvedCodexPaths {
+  root: string;
+  history: string;
+  sessions: string;
+  archivedSessions: string;
+  rootExists: boolean;
+  historyExists: boolean;
+  sessionsExists: boolean;
+  archivedSessionsExists: boolean;
+}
+
+export interface ResolvedPaths {
+  claude: ResolvedClaudePaths;
+  codex: ResolvedCodexPaths;
 }
 
 export interface SettingsView extends SettingsInput {

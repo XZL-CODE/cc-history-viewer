@@ -2,7 +2,9 @@
 //! 不重新解析任何 JSONL —— 数据全部来自 indexer 产出的 PromptEntry / parser 产出的 ConversationDetail。
 //! 所有用户可见文案支持 zh / en（由 lang 参数控制，默认 zh）。
 
-use crate::models::{ContentBlock, ConversationDetail, PromptEntry};
+use crate::models::{
+    Agent, AgentFilter, ContentBlock, ConversationDetail, PromptEntry, PromptOrigin,
+};
 use chrono::{Datelike, Local, NaiveDate, TimeZone};
 use std::collections::HashMap;
 
@@ -56,6 +58,7 @@ pub struct ExportParams<'a> {
     pub start_date: &'a str,
     pub end_date: &'a str,
     pub lang: Lang,
+    pub agent_filter: AgentFilter,
 }
 
 /// 导出产物
@@ -116,6 +119,7 @@ pub fn build(prompts: &[PromptEntry], p: &ExportParams) -> ExportData {
         .filter(|e| e.timestamp >= p.start_ms && e.timestamp <= p.end_ms)
         .filter(|e| p.project.map_or(true, |pf| e.project == pf))
         .filter(|e| p.include_commands || !e.is_command)
+        .filter(|e| p.agent_filter.includes(e.agent))
         .collect();
     items.sort_by_key(|e| e.timestamp);
 
@@ -134,7 +138,7 @@ pub fn build(prompts: &[PromptEntry], p: &ExportParams) -> ExportData {
     let mut md = String::new();
     match lang {
         Lang::Zh => {
-            md.push_str("# Claude Code Prompt 导出\n\n");
+            md.push_str("# Coding Agent Prompt 导出\n\n");
             md.push_str(&format!(
                 "> **时间范围**　{} ~ {}\n",
                 p.start_date, p.end_date
@@ -145,7 +149,7 @@ pub fn build(prompts: &[PromptEntry], p: &ExportParams) -> ExportData {
             md.push_str(&format!("> **导出于**　{}\n\n", now_label()));
         }
         Lang::En => {
-            md.push_str("# Claude Code Prompt Export\n\n");
+            md.push_str("# Coding Agent Prompt Export\n\n");
             md.push_str(&format!(
                 "> **Time range**　{} ~ {}\n",
                 p.start_date, p.end_date
@@ -209,9 +213,7 @@ fn render_by_project(md: &mut String, items: &[&PromptEntry], lang: Lang) {
         let list = &groups[proj];
         md.push_str(&format!("## 📁 {}\n\n", project_name(proj)));
         match lang {
-            Lang::Zh => {
-                md.push_str(&format!("`{}` · {} 条\n\n", pretty_path(proj), list.len()))
-            }
+            Lang::Zh => md.push_str(&format!("`{}` · {} 条\n\n", pretty_path(proj), list.len())),
             Lang::En => md.push_str(&format!(
                 "`{}` · {} prompts\n\n",
                 pretty_path(proj),
@@ -275,9 +277,21 @@ fn push_prompt(md: &mut String, e: &PromptEntry, time_fmt: &str, lang: Lang) {
     md.push_str(&format!("{}\n\n", e.text.trim()));
 }
 
-/// 时间后缀：分支 / 命令 / 粘贴标记。
+/// Product, origin, branch, command, and paste metadata.
 fn meta_suffix(e: &PromptEntry, lang: Lang) -> String {
-    let mut s = String::new();
+    let agent = match e.agent {
+        Agent::Claude => "Claude Code",
+        Agent::Codex => "Codex",
+    };
+    let origin = match (lang, e.origin) {
+        (Lang::Zh, PromptOrigin::History) => "历史",
+        (Lang::Zh, PromptOrigin::Conversation) => "会话",
+        (Lang::Zh, PromptOrigin::Both) => "历史+会话",
+        (Lang::En, PromptOrigin::History) => "history",
+        (Lang::En, PromptOrigin::Conversation) => "conversation",
+        (Lang::En, PromptOrigin::Both) => "history+conversation",
+    };
+    let mut s = format!(" · {agent} · {origin}");
     if let Some(b) = &e.git_branch {
         if !b.is_empty() {
             s.push_str(&format!(" · `{b}`"));
@@ -328,7 +342,9 @@ pub fn build_search_export(
             md.push_str(&format!("> **关键词**　`{query}`\n"));
             md.push_str(&format!(
                 "> **范围**　{}\n",
-                scope.map(pretty_path).unwrap_or_else(|| "全部文件夹".to_string())
+                scope
+                    .map(pretty_path)
+                    .unwrap_or_else(|| "全部文件夹".to_string())
             ));
             md.push_str(&format!(
                 "> **共**　{prompt_count} 条 prompt · {folder_count} 个文件夹 · 跨 {day_count} 天\n"
@@ -340,7 +356,9 @@ pub fn build_search_export(
             md.push_str(&format!("> **Keyword**　`{query}`\n"));
             md.push_str(&format!(
                 "> **Scope**　{}\n",
-                scope.map(pretty_path).unwrap_or_else(|| "all folders".to_string())
+                scope
+                    .map(pretty_path)
+                    .unwrap_or_else(|| "all folders".to_string())
             ));
             md.push_str(&format!(
                 "> **Total**　{prompt_count} prompts · {folder_count} folders · across {day_count} days\n"
@@ -396,11 +414,23 @@ pub fn build_conversation_markdown(
             pretty_path(&detail.project)
         ));
     }
+    md.push_str(&format!(
+        "> **{}**　{}\n",
+        label("产品", "Agent"),
+        match detail.agent {
+            Agent::Claude => "Claude Code",
+            Agent::Codex => "OpenAI Codex",
+        }
+    ));
     if let Some(b) = detail.git_branch.as_deref().filter(|b| !b.is_empty()) {
         md.push_str(&format!("> **{}**　{}\n", label("分支", "Branch"), b));
     }
-    if let Some(v) = detail.version.as_deref().filter(|v| !v.is_empty()) {
-        md.push_str(&format!("> **{}**　{}\n", label("CC 版本", "CC version"), v));
+    if let Some(v) = detail.cli_version.as_deref().filter(|v| !v.is_empty()) {
+        md.push_str(&format!(
+            "> **{}**　{}\n",
+            label("CLI 版本", "CLI version"),
+            v
+        ));
     }
     md.push_str(&format!(
         "> **{}**　{} ~ {}\n",
@@ -431,7 +461,10 @@ pub fn build_conversation_markdown(
         let who = if m.role == "user" {
             label("🧑 用户", "🧑 User")
         } else {
-            label("🤖 Claude", "🤖 Claude")
+            match detail.agent {
+                Agent::Claude => label("🤖 Claude", "🤖 Claude"),
+                Agent::Codex => label("🤖 Codex", "🤖 Codex"),
+            }
         };
         let side = if m.is_sidechain {
             label("（子代理）", " (subagent)")
@@ -469,10 +502,7 @@ fn render_block(md: &mut String, b: &ContentBlock, include_tools: bool, lang: La
             ));
         }
         "thinking" if include_tools => {
-            md.push_str(&format!(
-                "**{}**\n\n",
-                label("💭 思考过程", "💭 Thinking")
-            ));
+            md.push_str(&format!("**{}**\n\n", label("💭 思考过程", "💭 Thinking")));
             if let Some(t) = b.text.as_deref() {
                 for line in t.trim().lines() {
                     md.push_str("> ");
@@ -497,10 +527,7 @@ fn render_block(md: &mut String, b: &ContentBlock, include_tools: bool, lang: La
             md.push_str(&format!("````json\n{input}\n````\n\n"));
         }
         "tool_result" if include_tools => {
-            md.push_str(&format!(
-                "**{}**\n\n",
-                label("↩ 工具结果", "↩ Tool result")
-            ));
+            md.push_str(&format!("**{}**\n\n", label("↩ 工具结果", "↩ Tool result")));
             let t = b.text.as_deref().unwrap_or("");
             md.push_str(&format!("````\n{}\n````\n\n", t.trim()));
         }
@@ -552,12 +579,17 @@ mod tests {
     use crate::models::ChatMessage;
 
     fn mk(project: &str, ts: i64, text: &str, is_command: bool) -> PromptEntry {
+        mk_agent(Agent::Claude, project, ts, text, is_command)
+    }
+
+    fn mk_agent(agent: Agent, project: &str, ts: i64, text: &str, is_command: bool) -> PromptEntry {
         PromptEntry {
             id: format!("{ts}"),
+            agent,
             text: text.to_string(),
             project: project.to_string(),
             timestamp: ts,
-            source: "conversation".to_string(),
+            origin: PromptOrigin::Conversation,
             session_id: None,
             git_branch: None,
             is_command,
@@ -581,6 +613,7 @@ mod tests {
             start_date: start,
             end_date: end,
             lang,
+            agent_filter: AgentFilter::All,
         }
     }
 
@@ -608,13 +641,19 @@ mod tests {
         ];
 
         // 默认不含命令
-        let out = build(&prompts, &params("2026-05-16", "2026-05-17", false, Lang::Zh));
+        let out = build(
+            &prompts,
+            &params("2026-05-16", "2026-05-17", false, Lang::Zh),
+        );
         assert_eq!(out.prompt_count, 3);
         assert_eq!(out.folder_count, 2);
         assert_eq!(out.day_count, 2);
-        assert!(out.markdown.contains("# Claude Code Prompt 导出"));
+        assert!(out.markdown.contains("# Coding Agent Prompt 导出"));
         assert!(out.markdown.contains("你好，自我介绍一下"));
-        assert!(!out.markdown.contains("范围外不应出现"), "越界 prompt 不应导出");
+        assert!(
+            !out.markdown.contains("范围外不应出现"),
+            "越界 prompt 不应导出"
+        );
         assert!(!out.markdown.contains("/clear"), "默认不含命令");
         // alpha(2 条) 应排在 beta(1 条) 之前
         let ia = out.markdown.find("alpha").unwrap();
@@ -622,7 +661,10 @@ mod tests {
         assert!(ia < ib, "数量多的文件夹应在前");
 
         // 打开命令开关
-        let out2 = build(&prompts, &params("2026-05-16", "2026-05-17", true, Lang::Zh));
+        let out2 = build(
+            &prompts,
+            &params("2026-05-16", "2026-05-17", true, Lang::Zh),
+        );
         assert_eq!(out2.prompt_count, 4);
         assert!(out2.markdown.contains("/clear"));
         assert!(out2.markdown.contains("命令"));
@@ -631,9 +673,34 @@ mod tests {
     #[test]
     fn empty_range_reports_zero() {
         let prompts = vec![mk("/p/a", day_start_ms("2026-01-01").unwrap(), "x", false)];
-        let out = build(&prompts, &params("2026-05-16", "2026-05-17", false, Lang::Zh));
+        let out = build(
+            &prompts,
+            &params("2026-05-16", "2026-05-17", false, Lang::Zh),
+        );
         assert_eq!(out.prompt_count, 0);
         assert!(out.markdown.contains("没有 prompt"));
+    }
+
+    #[test]
+    fn agent_filter_and_export_metadata_preserve_product_identity() {
+        let day = day_start_ms("2026-05-16").unwrap();
+        let prompts = vec![
+            mk_agent(
+                Agent::Claude,
+                "/p/shared",
+                day + 1_000,
+                "claude-only",
+                false,
+            ),
+            mk_agent(Agent::Codex, "/p/shared", day + 2_000, "codex-only", false),
+        ];
+        let mut parameters = params("2026-05-16", "2026-05-16", true, Lang::En);
+        parameters.agent_filter = AgentFilter::Codex;
+        let out = build(&prompts, &parameters);
+        assert_eq!(out.prompt_count, 1);
+        assert!(out.markdown.contains("codex-only"));
+        assert!(out.markdown.contains("Codex · conversation"));
+        assert!(!out.markdown.contains("claude-only"));
     }
 
     #[test]
@@ -643,8 +710,11 @@ mod tests {
             mk("/p/alpha", d16 + 1_000, "hello world", false),
             mk("/p/alpha", d16 + 2_000, "/clear", true),
         ];
-        let out = build(&prompts, &params("2026-05-16", "2026-05-16", true, Lang::En));
-        assert!(out.markdown.contains("# Claude Code Prompt Export"));
+        let out = build(
+            &prompts,
+            &params("2026-05-16", "2026-05-16", true, Lang::En),
+        );
+        assert!(out.markdown.contains("# Coding Agent Prompt Export"));
         assert!(out.markdown.contains("Time range"));
         assert!(out.markdown.contains("prompts"));
         assert!(out.markdown.contains("command"));
@@ -663,14 +733,18 @@ mod tests {
     #[test]
     fn conversation_markdown_respects_include_tools() {
         let detail = ConversationDetail {
+            agent: Agent::Claude,
             session_id: "sess-1".into(),
             project: "/p/alpha".into(),
             git_branch: Some("main".into()),
             started_at: day_start_ms("2026-05-16").unwrap(),
             ended_at: day_start_ms("2026-05-16").unwrap() + 60_000,
-            version: Some("2.0.0".into()),
+            cli_version: Some("2.0.0".into()),
+            source: Some("cli".into()),
+            models: vec!["claude-test".into()],
             messages: vec![
                 ChatMessage {
+                    agent: Agent::Claude,
                     uuid: "u1".into(),
                     role: "user".into(),
                     timestamp: day_start_ms("2026-05-16").unwrap(),
@@ -678,6 +752,7 @@ mod tests {
                     blocks: vec![text_block("帮我重构")],
                 },
                 ChatMessage {
+                    agent: Agent::Claude,
                     uuid: "a1".into(),
                     role: "assistant".into(),
                     timestamp: day_start_ms("2026-05-16").unwrap() + 1_000,
@@ -698,6 +773,7 @@ mod tests {
                     ],
                 },
                 ChatMessage {
+                    agent: Agent::Claude,
                     uuid: "a2".into(),
                     role: "assistant".into(),
                     timestamp: day_start_ms("2026-05-16").unwrap() + 2_000,
@@ -730,5 +806,15 @@ mod tests {
         assert!(md3.contains("# Conversation Export"));
         assert!(md3.contains("🧑 User"));
         assert!(md3.contains("💭 Thinking"));
+
+        let mut codex_detail = detail.clone();
+        codex_detail.agent = Agent::Codex;
+        for message in &mut codex_detail.messages {
+            message.agent = Agent::Codex;
+        }
+        let codex = build_conversation_markdown(&codex_detail, true, Lang::En);
+        assert!(codex.contains("> **Agent**　OpenAI Codex"));
+        assert!(codex.contains("## 🤖 Codex"));
+        assert!(codex.contains("Tool call · Bash"));
     }
 }

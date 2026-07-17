@@ -56,22 +56,50 @@ fn session_golden() {
     let texts: Vec<&str> = r.user_prompts.iter().map(|p| p.text.as_str()).collect();
     assert_eq!(texts, vec!["帮我重构 parser 模块", "/model"]);
     assert_eq!(r.first_prompt, "帮我重构 parser 模块");
-    assert!(r.user_prompts.iter().all(|p| p.project == "/Users/dev/alpha"));
+    assert!(r
+        .user_prompts
+        .iter()
+        .all(|p| p.project == "/Users/dev/alpha"));
 
     // 用量提取：msg_001 被拆成两行（resume/分块复制场景）只记一次；
     // sidechain 的 assistant 行同样计入用量
     assert_eq!(r.usage_entries.len(), 3);
-    let keys: Vec<&str> = r.usage_entries.iter().map(|e| e.dedup_key.as_str()).collect();
-    assert_eq!(keys, vec!["msg_001", "msg_002", "msg_003"]);
+    let keys: Vec<&str> = r
+        .usage_entries
+        .iter()
+        .map(|e| e.dedup_key.as_str())
+        .collect();
+    assert_eq!(
+        keys,
+        vec![
+            "claude:id:msg_001",
+            "claude:id:msg_002",
+            "claude:id:msg_003"
+        ]
+    );
 
-    let input: u64 = r.usage_entries.iter().map(|e| e.input).sum();
-    let output: u64 = r.usage_entries.iter().map(|e| e.output).sum();
-    let cache_read: u64 = r.usage_entries.iter().map(|e| e.cache_read).sum();
-    let cache_creation: u64 = r.usage_entries.iter().map(|e| e.cache_creation).sum();
+    let input: u64 = r.usage_entries.iter().map(|e| e.usage.uncached_input).sum();
+    let output: u64 = r.usage_entries.iter().map(|e| e.usage.output).sum();
+    let cache_read: u64 = r.usage_entries.iter().map(|e| e.usage.cache_read).sum();
+    let cache_creation: u64 = r.usage_entries.iter().map(|e| e.usage.cache_creation).sum();
     assert_eq!(input, 100 + 10 + 7);
     assert_eq!(output, 200 + 20 + 5);
     assert_eq!(cache_read, 1000);
     assert_eq!(cache_creation, 50);
+    let total: u64 = r
+        .usage_entries
+        .iter()
+        .map(|entry| entry.usage.total_tokens_including_cache())
+        .sum();
+    assert_eq!(
+        total,
+        input + cache_read + cache_creation + output,
+        "Claude cache reads and cache creation count toward total tokens"
+    );
+    assert!(r
+        .usage_entries
+        .iter()
+        .all(|entry| entry.usage.reasoning_output == 0));
 
     assert!(r.usage_entries[0].model.starts_with("claude-sonnet-4-5"));
     assert!(r.usage_entries[1].model.starts_with("claude-opus-4-5"));

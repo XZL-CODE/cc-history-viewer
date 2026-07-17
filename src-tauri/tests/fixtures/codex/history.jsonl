@@ -1,0 +1,4 @@
+{"session_id":"codex-current-0001","text":"Synthetic current request","ts":1784275200}
+{"session_id":"codex-current-0001","text":"Synthetic follow-up request","ts":1784275500000}
+{this line is intentionally damaged json
+{"session_id":"codex-missing-text-0001","ts":1784275800}

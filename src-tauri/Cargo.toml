@@ -1,7 +1,7 @@
 [package]
 name = "cc-history-viewer"
-version = "0.4.0"
-description = "可视化本地 Claude Code 的历史对话与 Prompt"
+version = "0.5.0"
+description = "Local history viewer for Claude Code and OpenAI Codex"
 authors = ["xzl"]
 edition = "2021"
 rust-version = "1.77"

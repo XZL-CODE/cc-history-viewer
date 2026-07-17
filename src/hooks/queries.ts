@@ -2,23 +2,23 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { ExportGroupBy, SortMode } from "@/lib/types";
+import type { Agent, AgentFilter, ExportGroupBy, SortMode } from "@/lib/types";
 import { useDebounce } from "./useDebounce";
 
 const FIVE_MIN = 5 * 60 * 1000;
 
-export function useProjects() {
+export function useProjects(agentFilter: AgentFilter) {
   return useQuery({
-    queryKey: ["projects"],
-    queryFn: api.getProjects,
+    queryKey: ["projects", agentFilter],
+    queryFn: () => api.getProjects(agentFilter),
     staleTime: FIVE_MIN,
   });
 }
 
-export function useStats() {
+export function useStats(agentFilter: AgentFilter) {
   return useQuery({
-    queryKey: ["stats"],
-    queryFn: api.getStats,
+    queryKey: ["stats", agentFilter],
+    queryFn: () => api.getStats(agentFilter),
     staleTime: FIVE_MIN,
   });
 }
@@ -41,10 +41,14 @@ export function useSettings(enabled = true) {
   });
 }
 
-export function useRecentPrompts(limit: number, includeCommands: boolean) {
+export function useRecentPrompts(
+  limit: number,
+  includeCommands: boolean,
+  agentFilter: AgentFilter
+) {
   return useQuery({
-    queryKey: ["recent-prompts", limit, includeCommands],
-    queryFn: () => api.getRecentPrompts(limit, includeCommands),
+    queryKey: ["recent-prompts", limit, includeCommands, agentFilter],
+    queryFn: () => api.getRecentPrompts(limit, includeCommands, agentFilter),
     staleTime: FIVE_MIN,
   });
 }
@@ -52,31 +56,35 @@ export function useRecentPrompts(limit: number, includeCommands: boolean) {
 export function useProjectPrompts(
   project: string | null,
   sort: SortMode,
-  includeCommands: boolean
+  includeCommands: boolean,
+  agentFilter: AgentFilter
 ) {
   return useQuery({
-    queryKey: ["project-prompts", project, sort, includeCommands],
+    queryKey: ["project-prompts", project, sort, includeCommands, agentFilter],
     queryFn: () =>
-      api.getProjectPrompts(project as string, sort, includeCommands),
+      api.getProjectPrompts(project as string, sort, includeCommands, agentFilter),
     enabled: !!project,
     staleTime: FIVE_MIN,
   });
 }
 
-export function useProjectSessions(project: string | null) {
+export function useProjectSessions(
+  project: string | null,
+  agentFilter: AgentFilter
+) {
   return useQuery({
-    queryKey: ["project-sessions", project],
-    queryFn: () => api.getProjectSessions(project as string),
+    queryKey: ["project-sessions", project, agentFilter],
+    queryFn: () => api.getProjectSessions(project as string, agentFilter),
     enabled: !!project,
     staleTime: FIVE_MIN,
   });
 }
 
-export function useConversation(sessionId: string | null) {
+export function useConversation(agent: Agent | null, sessionId: string | null) {
   return useQuery({
-    queryKey: ["conversation", sessionId],
-    queryFn: () => api.getConversation(sessionId as string),
-    enabled: !!sessionId,
+    queryKey: ["conversation", agent, sessionId],
+    queryFn: () => api.getConversation(agent as Agent, sessionId as string),
+    enabled: !!agent && !!sessionId,
     staleTime: FIVE_MIN,
   });
 }
@@ -88,6 +96,7 @@ export function useExportPreview(params: {
   project: string | null;
   includeCommands: boolean;
   groupBy: ExportGroupBy;
+  agentFilter: AgentFilter;
   lang: string;
   enabled: boolean;
 }) {
@@ -97,6 +106,7 @@ export function useExportPreview(params: {
     project,
     includeCommands,
     groupBy,
+    agentFilter,
     lang,
     enabled,
   } = params;
@@ -108,6 +118,7 @@ export function useExportPreview(params: {
       project,
       includeCommands,
       groupBy,
+      agentFilter,
       lang,
     ],
     queryFn: () =>
@@ -117,6 +128,7 @@ export function useExportPreview(params: {
         project,
         includeCommands,
         groupBy,
+        agentFilter,
         lang,
         write: false,
       }),
@@ -128,13 +140,19 @@ export function useExportPreview(params: {
 export function useSearch(
   query: string,
   projectFilter: string | null,
-  includeCommands: boolean
+  includeCommands: boolean,
+  agentFilter: AgentFilter
 ) {
   const debounced = useDebounce(query.trim(), 300);
   const result = useQuery({
-    queryKey: ["search", debounced, projectFilter, includeCommands],
+    queryKey: ["search", debounced, projectFilter, includeCommands, agentFilter],
     queryFn: () =>
-      api.searchPrompts(debounced, projectFilter, includeCommands),
+      api.searchPrompts(
+        debounced,
+        projectFilter,
+        includeCommands,
+        agentFilter
+      ),
     enabled: debounced.length > 0,
     staleTime: 60 * 1000,
   });

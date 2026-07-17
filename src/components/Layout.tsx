@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Languages, Layers, RefreshCw, Settings, Terminal } from "lucide-react";
+import {
+  Languages,
+  Layers,
+  Menu,
+  RefreshCw,
+  Settings,
+  Terminal,
+} from "lucide-react";
 import { useStore } from "@/store";
 import { useLang, useT } from "@/i18n";
 import { api } from "@/lib/api";
@@ -29,9 +36,11 @@ export function Layout() {
   const { lang, setLang } = useLang();
   const [refreshing, setRefreshing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // 根据路由派生「当前文件夹」，使其不受搜索时页面卸载的影响
   useEffect(() => {
+    setSidebarOpen(false);
     const m = location.pathname.match(/^\/project\/(.+)$/);
     if (m) {
       const path = decodePath(m[1]);
@@ -58,44 +67,52 @@ export function Layout() {
   };
 
   return (
-    <div className="flex h-screen flex-col">
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-surface px-4">
-        <button
-          onClick={() => {
-            setQuery("");
-            navigate("/");
-          }}
-          className="flex shrink-0 items-center gap-2"
-          title={t("backHome")}
-        >
-          <span
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-white"
-            style={{
-              background: "linear-gradient(135deg, #7c6cff, #a855f7)",
-            }}
+    <div className="flex h-screen min-w-0 flex-col">
+      <header className="shrink-0 border-b border-border bg-surface">
+        <div className="flex h-14 min-w-0 items-center gap-1.5 px-3 sm:gap-2 sm:px-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSidebarOpen(true)}
+            title={t("openNavigation")}
+            className="md:hidden"
           >
-            <Layers size={16} />
-          </span>
-          <span className="hidden text-sm font-semibold text-foreground sm:inline">
-            CC History Viewer
-          </span>
-        </button>
+            <Menu size={17} />
+          </Button>
 
-        <SearchBar />
+          <button
+            onClick={() => {
+              setQuery("");
+              navigate("/");
+            }}
+            className="flex shrink-0 items-center gap-2"
+            title={t("backHome")}
+          >
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-accent-fg">
+              <Layers size={16} />
+            </span>
+            <span className="hidden text-sm font-semibold text-foreground xl:inline">
+              Coding Agent History Viewer
+            </span>
+          </button>
 
-        <button
-          onClick={() => setIncludeCommands(!includeCommands)}
-          title={includeCommands ? t("commandsShownTitle") : t("commandsHiddenTitle")}
-          className={cn(
-            "flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors",
-            includeCommands
-              ? "border-accent/40 bg-accent/15 text-accent"
-              : "border-border text-muted hover:text-foreground"
-          )}
-        >
-          <Terminal size={14} />
-          {t("commandsToggle")}
-        </button>
+          <div className="hidden min-w-0 flex-1 md:block">
+            <SearchBar />
+          </div>
+
+          <button
+            onClick={() => setIncludeCommands(!includeCommands)}
+            title={includeCommands ? t("commandsShownTitle") : t("commandsHiddenTitle")}
+            className={cn(
+              "flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors",
+              includeCommands
+                ? "border-accent/40 bg-accent/15 text-accent"
+                : "border-border text-muted hover:text-foreground"
+            )}
+          >
+            <Terminal size={14} />
+            <span className="hidden xl:inline">{t("commandsToggle")}</span>
+          </button>
 
         <Button
           variant="ghost"
@@ -116,16 +133,20 @@ export function Layout() {
           <Settings size={16} />
         </Button>
 
-        <button
-          onClick={() => setLang(lang === "zh" ? "en" : "zh")}
-          title={t("switchLanguage")}
-          className="flex h-9 shrink-0 items-center gap-1 rounded-lg border border-border px-2 text-xs font-medium text-muted transition-colors hover:text-foreground"
-        >
-          <Languages size={14} />
-          {t("langBadge")}
-        </button>
+          <button
+            onClick={() => setLang(lang === "zh" ? "en" : "zh")}
+            title={t("switchLanguage")}
+            className="flex h-9 shrink-0 items-center gap-1 rounded-lg border border-border px-2 text-xs font-medium text-muted transition-colors hover:text-foreground"
+          >
+            <Languages size={14} />
+            <span className="hidden xl:inline">{t("langBadge")}</span>
+          </button>
 
-        <ThemeToggle />
+          <ThemeToggle />
+        </div>
+        <div className="px-3 pb-2 md:hidden">
+          <SearchBar />
+        </div>
       </header>
 
       <SettingsDialog
@@ -133,9 +154,18 @@ export function Layout() {
         onClose={() => setSettingsOpen(false)}
       />
 
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto">
+      {sidebarOpen && (
+        <button
+          type="button"
+          aria-label={t("closeNavigation")}
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+        />
+      )}
+
+      <div className="flex min-w-0 flex-1 overflow-hidden">
+        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <main className="min-w-0 flex-1 overflow-y-auto">
           {searching ? <SearchResults /> : <Outlet />}
         </main>
       </div>

@@ -13,6 +13,7 @@ import { useT, type DictKey } from "@/i18n";
 import type { SessionSummary, SortMode } from "@/lib/types";
 import { absoluteTime, cn, formatNumber } from "@/lib/utils";
 import { errMessage } from "@/lib/api";
+import { AgentBadge, AgentFilterControl } from "@/components/AgentBadge";
 
 const sortOptions: { value: SortMode; labelKey: DictKey }[] = [
   { value: "newest", labelKey: "sortNewest" },
@@ -57,17 +58,24 @@ function TabButton({
   );
 }
 
-function SessionRow({ session }: { session: SessionSummary }) {
+function SessionRow({
+  session,
+  showAgentBadge,
+}: {
+  session: SessionSummary;
+  showAgentBadge: boolean;
+}) {
   const t = useT();
   return (
     <Link
-      to={`/conversation/${session.sessionId}`}
+      to={`/conversation/${session.agent}/${session.sessionId}`}
       className="block rounded-xl border border-border bg-surface p-3.5 transition-colors hover:border-accent/40"
     >
       <div className="line-clamp-2 text-sm font-medium text-foreground">
         {session.title || t("untitledSession")}
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
+        {showAgentBadge && <AgentBadge agent={session.agent} />}
         <span>{absoluteTime(session.startedAt)}</span>
         <span>
           {t("messagesCount", { count: formatNumber(session.messageCount) })}
@@ -78,6 +86,18 @@ function SessionRow({ session }: { session: SessionSummary }) {
             {session.gitBranch}
           </span>
         )}
+        {session.cliVersion && (
+          <Badge tone="muted">CLI {session.cliVersion}</Badge>
+        )}
+        {session.models.length > 0 && (
+          <span
+            className="max-w-[min(100%,20rem)] truncate"
+            title={session.models.join(", ")}
+          >
+            {session.models.join(", ")}
+          </span>
+        )}
+        {session.source && <Badge tone="outline">{session.source}</Badge>}
       </div>
     </Link>
   );
@@ -88,17 +108,24 @@ export function ProjectPrompts() {
   const projectPath = params.encoded ?? "";
   const name = projectPath.split("/").filter(Boolean).pop() || projectPath;
 
-  // 「当前文件夹」由 Layout 根据路由统一登记，这里只读 includeCommands
-  const { includeCommands } = useStore();
+  // 「当前文件夹」由 Layout 根据路由统一登记
+  const { includeCommands, projectAgentFilter, setProjectAgentFilter } =
+    useStore();
   const t = useT();
   const [sort, setSort] = useState<SortMode>("newest");
   const [tab, setTab] = useState<"prompts" | "sessions">("prompts");
 
-  const projectsQ = useProjects();
+  const projectsQ = useProjects(projectAgentFilter);
   const info = projectsQ.data?.find((p) => p.path === projectPath);
-  const promptsQ = useProjectPrompts(projectPath, sort, includeCommands);
+  const promptsQ = useProjectPrompts(
+    projectPath,
+    sort,
+    includeCommands,
+    projectAgentFilter
+  );
   const sessionsQ = useProjectSessions(
-    tab === "sessions" ? projectPath : null
+    tab === "sessions" ? projectPath : null,
+    projectAgentFilter
   );
 
   // memo 保持引用稳定：PromptList 以 items 引用变化作为重置分批的信号
@@ -108,36 +135,47 @@ export function ProjectPrompts() {
   );
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-6">
-      <div className="mb-5">
-        <div className="flex items-center gap-2">
-          <Folder size={18} className="text-accent" />
-          <h1 className="text-lg font-semibold text-foreground">{name}</h1>
-        </div>
-        <p className="mt-1 break-all text-xs text-muted">{projectPath}</p>
-        {info && (
-          <div className="mt-2.5 flex flex-wrap items-center gap-2">
-            <Badge tone="accent">
-              {t("promptCountLabel", {
-                count: formatNumber(info.promptCount),
-              })}
-            </Badge>
-            {info.commandCount > 0 && (
-              <Badge tone="muted">
-                {t("commandCountLabel", {
-                  count: formatNumber(info.commandCount),
-                })}
-              </Badge>
-            )}
-            {info.hasConversations && (
-              <Badge tone="muted">
-                {t("sessionCountLabel", {
-                  count: formatNumber(info.sessionCount),
-                })}
-              </Badge>
-            )}
+    <div className="mx-auto max-w-4xl px-4 py-5 sm:px-6 sm:py-6">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <Folder size={18} className="shrink-0 text-accent" />
+            <h1 className="min-w-0 break-words text-lg font-semibold text-foreground">
+              {name}
+            </h1>
           </div>
-        )}
+          <p className="mt-1 break-all text-xs text-muted">{projectPath}</p>
+          {info && (
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <Badge tone="accent">
+                {t("promptCountLabel", {
+                  count: formatNumber(info.promptCount),
+                })}
+              </Badge>
+              {info.commandCount > 0 && (
+                <Badge tone="muted">
+                  {t("commandCountLabel", {
+                    count: formatNumber(info.commandCount),
+                  })}
+                </Badge>
+              )}
+              {info.hasConversations && (
+                <Badge tone="muted">
+                  {t("sessionCountLabel", {
+                    count: formatNumber(info.sessionCount),
+                  })}
+                </Badge>
+              )}
+              {info.agents.map((agent) => (
+                <AgentBadge key={agent} agent={agent} />
+              ))}
+            </div>
+          )}
+        </div>
+        <AgentFilterControl
+          value={projectAgentFilter}
+          onChange={setProjectAgentFilter}
+        />
       </div>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -188,7 +226,10 @@ export function ProjectPrompts() {
             hint={errMessage(promptsQ.error)}
           />
         ) : promptItems.length > 0 ? (
-          <PromptList items={promptItems} />
+          <PromptList
+            items={promptItems}
+            showAgentBadge={projectAgentFilter === "all"}
+          />
         ) : (
           <CenterMessage
             icon={<Folder size={28} />}
@@ -207,7 +248,11 @@ export function ProjectPrompts() {
       ) : sessionsQ.data && sessionsQ.data.length > 0 ? (
         <div className="space-y-2.5">
           {sessionsQ.data.map((s) => (
-            <SessionRow key={s.sessionId} session={s} />
+            <SessionRow
+              key={`${s.agent}:${s.sessionId}`}
+              session={s}
+              showAgentBadge={projectAgentFilter === "all"}
+            />
           ))}
         </div>
       ) : (

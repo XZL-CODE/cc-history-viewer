@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, Download, FolderOpen, SearchX } from "lucide-react";
 import { useStore } from "@/store";
 import { useSearch } from "@/hooks/queries";
 import { PromptList, type PromptListItem } from "@/components/PromptList";
+import { AgentFilterControl } from "@/components/AgentBadge";
 import { Button, CenterMessage, Spinner } from "@/components/ui";
 import { api, errMessage } from "@/lib/api";
 import { getCurrentLang, useT } from "@/i18n";
@@ -10,14 +11,22 @@ import { formatNumber } from "@/lib/utils";
 import type { ExportResult } from "@/lib/types";
 
 export function SearchResults() {
-  const { query, scope, currentProject, currentProjectName, includeCommands } =
-    useStore();
+  const {
+    searchAgentFilter,
+    setSearchAgentFilter,
+    query,
+    scope,
+    currentProject,
+    currentProjectName,
+    includeCommands,
+  } = useStore();
   const t = useT();
   const projectFilter = scope === "folder" ? currentProject : null;
   const { data, isLoading, isError, error, debouncedQuery } = useSearch(
     query,
     projectFilter,
-    includeCommands
+    includeCommands,
+    searchAgentFilter
   );
 
   // memo 保持引用稳定：PromptList 以 items 引用变化作为重置分批的信号
@@ -31,6 +40,11 @@ export function SearchResults() {
   const [exportResult, setExportResult] = useState<ExportResult | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
 
+  useEffect(() => {
+    setExportResult(null);
+    setExportError(null);
+  }, [searchAgentFilter, debouncedQuery, includeCommands, projectFilter]);
+
   const handleExport = async () => {
     if (!debouncedQuery || exporting) return;
     setExporting(true);
@@ -41,6 +55,7 @@ export function SearchResults() {
         query: debouncedQuery,
         projectFilter,
         includeCommands,
+        agentFilter: searchAgentFilter,
         write: true,
         lang: getCurrentLang(),
       });
@@ -63,7 +78,7 @@ export function SearchResults() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-6">
+    <div className="mx-auto max-w-4xl px-4 py-5 sm:px-6 sm:py-6">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
         <div>
           <h1 className="text-lg font-semibold text-foreground">
@@ -77,21 +92,34 @@ export function SearchResults() {
               ` · ${t("searchKeyword", { keyword: debouncedQuery })}`}
             {data &&
               ` · ${t("searchHits", { count: formatNumber(data.length) })}`}
+            {` · ${
+              searchAgentFilter === "all"
+                ? t("agentAll")
+                : searchAgentFilter === "claude"
+                  ? t("agentClaude")
+                  : t("agentCodex")
+            }`}
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleExport}
-          disabled={exporting || items.length === 0}
-        >
-          {exporting ? (
-            <Spinner className="border-accent/40 border-t-accent" />
-          ) : (
-            <Download size={13} />
-          )}
-          {t("exportSearchResults")}
-        </Button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <AgentFilterControl
+            value={searchAgentFilter}
+            onChange={setSearchAgentFilter}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExport}
+            disabled={exporting || items.length === 0}
+          >
+            {exporting ? (
+              <Spinner className="border-accent/40 border-t-accent" />
+            ) : (
+              <Download size={13} />
+            )}
+            {t("exportSearchResults")}
+          </Button>
+        </div>
       </div>
 
       {exportError && (
@@ -138,7 +166,11 @@ export function SearchResults() {
           hint={t("noMatchingPromptsHint")}
         />
       ) : (
-        <PromptList items={items} showProject={scope === "global"} />
+        <PromptList
+          items={items}
+          showProject={scope === "global"}
+          showAgentBadge={searchAgentFilter === "all"}
+        />
       )}
     </div>
   );

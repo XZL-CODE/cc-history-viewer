@@ -1,11 +1,12 @@
 <div align="center">
 
-<img src="src-tauri/icons/icon.png" width="120" alt="CC History Viewer" />
+<img src="src-tauri/icons/icon.png" width="120" alt="Coding Agent History Viewer" />
 
-# CC History Viewer
+# Coding Agent History Viewer
 
-**可视化浏览本地 Claude Code 的历史 Prompt 与对话**
-**A local, read-only desktop viewer for your Claude Code prompt & conversation history**
+**本地、只读地浏览 Claude Code 与 OpenAI Codex 的 Prompt、会话和用量**
+
+**A local, read-only viewer for Claude Code and OpenAI Codex history**
 
 [简体中文](#简体中文) · [English](#english)
 
@@ -15,164 +16,266 @@
 
 ## 简体中文
 
-一个纯本地、**只读**的桌面工具：扫描 `~/.claude/` 下的数据，按文件夹（项目）聚合你在
-Claude Code 里输入过的所有 Prompt，支持全局 / 文件夹内模糊搜索、统计概览与对话详情查看。
+Coding Agent History Viewer 是一个 Tauri 桌面应用。它在本机扫描 Claude Code 与 OpenAI Codex 的历史文件，按工作目录聚合 Prompt、会话、工具调用和 Token 用量。应用不联网，也不会把历史上传到任何服务。
 
-### ✨ 功能特性
+### 功能
 
-- **文件夹导航** —— 以「文件夹（项目）」为一级维度，逐条浏览该目录下的全部历史 Prompt
-- **双数据源合并** —— `history.jsonl`（输入框历史）与对话文件中的 user 消息合并去重，来源清晰标注
-- **Token 用量与成本统计** —— 从对话文件聚合每条 assistant 消息的 token 用量（跨会话去重），按天 / 按模型 / 按项目展示用量与估算成本、缓存命中率
-- **模糊搜索** —— 全局 / 当前文件夹两种范围；子串匹配、不区分大小写、空格分词（多关键词 AND）、命中高亮
-- **统计概览** —— Prompt 总数、每日活跃度、24 小时分布、最活跃文件夹 Top 榜、CC 版本等
-- **对话详情** —— 以聊天气泡查看完整会话，工具调用 / 思考过程可折叠；一键复制 `claude --resume` 命令续接会话
-- **一键复制** —— 任意 Prompt 卡片一键复制全文，找回即复用
-- **按日期范围导出** —— 选定时间范围，把发给 Claude Code 的每条 Prompt 导出成一份完整 Markdown（按文件夹分组 / 按天 / 时间线三种组织方式），一键保存到 `~/Downloads`
-- **导出整段对话** —— 把单个会话完整导出为 Markdown，可选包含工具调用与思考过程
-- **斜杠命令过滤** —— 一键显示 / 隐藏 `/clear`、`/model` 等命令
-- **中英双语界面** / **深色 / 浅色主题**
-- **增量索引** —— 按文件粒度缓存解析结果，只重解析变化过的对话文件，大历史库也能秒开
+- 在概览顶部按 **Claude Code / Codex / 全部** 筛选，默认选择“全部”并在本机持久化选择。
+- 按工作目录浏览项目、Prompt 和会话；“全部”模式下相同 `cwd` 合并为一个项目。
+- 查看最近 Prompt、全局搜索、文件夹内搜索、完整会话、Markdown、工具调用和思考内容。
+- Prompt、会话和导出内容保留 Claude Code 或 Codex 来源标识。
+- 统计每日活动、小时与星期分布、项目排行、模型、CLI 版本、Token、缓存命中率和估算成本。
+- 按文件 `mtime` 建立增量索引，并行扫描大历史库；JSONL 按行流式解析。
+- 任一产品的数据目录不存在时，仍可正常浏览另一个产品的数据。
 
-### 🧱 技术栈
+### 数据路径
 
-| 层 | 技术 |
-|---|---|
-| 桌面框架 | Tauri v2 |
-| 前端 | Vite · React 18 · TypeScript · Tailwind CSS v4 |
-| 后端 | Rust（JSONL 解析、索引构建、搜索） |
-| 其它 | Recharts · React Router · TanStack Query |
+#### Claude Code
 
-### 📂 数据来源（全部只读）
-
-| 来源 | 路径 | 用途 |
+| 数据 | 默认路径 | 用途 |
 |---|---|---|
-| Prompt 历史 | `~/.claude/history.jsonl` | 输入框打过的每条 prompt |
-| 完整对话 | `~/.claude/projects/<编码路径>/*.jsonl` | 会话消息流、对话详情 |
-| 会话元数据 | `~/.claude/sessions/*.json` | 会话状态、CC 版本 |
+| Prompt 历史 | `~/.claude/history.jsonl` | 输入框历史 |
+| 完整会话 | `~/.claude/projects/**/*.jsonl` | 用户/助手消息、工具调用和用量 |
+| 会话元数据 | `~/.claude/sessions/*.json` | CLI 版本等补充信息 |
 
-> ⚠️ 本工具**绝不修改或删除** `~/.claude/` 下任何文件，数据全部在本机处理、不联网上传。
+设置中的 `historyFile`、`projectsDir`、`sessionsDir` 可分别覆盖路径；否则从 `claudeDataDir` 推导；仍未配置时使用 `~/.claude`。这些旧字段继续兼容已有 `settings.json`。
 
-### 🚀 安装与运行
+#### OpenAI Codex
 
-环境要求：Node.js ≥ 18、pnpm ≥ 8、Rust 工具链。Rust 安装见 [Rust 工具链安装指南](./Rust工具链安装指南.md)。
+| 数据 | 默认路径 | 用途 |
+|---|---|---|
+| Prompt 历史 | `<CODEX_ROOT>/history.jsonl` | `session_id`、`text`、`ts` |
+| 当前会话 | `<CODEX_ROOT>/sessions/YYYY/MM/DD/rollout-*.jsonl` | 完整事件流 |
+| 归档会话 | `<CODEX_ROOT>/archived_sessions/*.jsonl` | 已归档事件流 |
+
+`CODEX_ROOT` 的优先级固定为：
+
+1. 设置中的 `codexDataDir`
+2. 环境变量 `CODEX_HOME`
+3. `~/.codex`
+
+设置页会分别显示两种产品的配置值、最终解析路径和存在状态。保存设置后重新建立索引，无需重新编译。旧版仅含 Claude 字段的设置文件会自动按默认值补齐 Codex 配置。
+
+设置文件位于系统应用配置目录。macOS 默认是：
+
+```text
+~/Library/Application Support/com.xzl.cchistoryviewer/settings.json
+```
+
+为兼容旧开发环境，源码根目录的 `settings.json` 仍可作为低优先级回退。示例见 [`settings.example.json`](./settings.example.json)。bundle identifier `com.xzl.cchistoryviewer` 保持不变，因此原有应用配置目录不会丢失。
+
+### Codex 格式兼容
+
+- 从 `session_meta` 读取会话 ID、`cwd`、CLI 版本和客户端来源，从最近的 `turn_context` 读取模型。
+- 从 `event_msg.user_message` 提取当前格式的真实用户 Prompt；`history.jsonl` 通过 `session_id` 关联 `session_meta.cwd`。
+- 完全旧版 rollout 缺少 `event_msg.user_message` 时，回退到 `response_item` 的 `role=user`；若同一文件中途升级格式，则保留首个 event 之前清理后的旧 Prompt，并从首个 event 起只信任 `event_msg.user_message`。developer、system、`AGENTS.md`、`environment_context`、`codex_internal_context` 等注入内容不会成为 Prompt。
+- 从 `response_item` 提取助手消息、函数或自定义工具调用及结果；未知事件会被忽略。
+- 旧 rollout 可以只有 `session_meta` 和 `response_item`，缺少模型与 Token 时仍可浏览。
+- `history.jsonl` 的 `ts` 同时接受 Unix 秒和毫秒。单行 JSON 损坏不会使整个文件或索引失败。
+- 默认 Prompt 与会话统计排除自动生成的 sub-agent Prompt；sub-agent 的真实模型调用仍计入 Token，并归属其自身 `cwd`。
+
+Codex 文件已可能超过 1 GB。解析器逐行读取，不会先把整个 JSONL 加载进内存；会话文件仍按文件并行扫描。
+
+### 统一模型与筛选口径
+
+公共领域模型使用：
+
+- `agent`: `claude | codex`
+- `origin`: `history | conversation | both`
+
+`origin` 只描述 Prompt 来自输入历史、会话文件或两者，不再与产品来源混用。Prompt、项目、会话、消息、用量和缓存记录均保留 `agent`。稳定 ID、会话映射、路由、去重键和缓存键都包含 `agent`，因此两个产品即使出现相同 `session_id` 也不会冲突；跨产品的相同文本不会互相去重。
+
+“全部”筛选满足以下恒等关系：
+
+- Prompt 数、会话数和每个归一化 Token 分项等于 Claude 与 Codex 之和。
+- 项目数等于两个产品 `cwd` 路径的并集大小，不是两个项目数简单相加。
+- 相同 `cwd` 的项目在导航中合并，但其 Prompt 和会话仍保留 `agent`。
+
+### Token 统计
+
+统一用量字段如下：
+
+| 字段 | 含义 |
+|---|---|
+| `uncachedInput` | 未命中缓存的输入 Token |
+| `cacheRead` | 从缓存读取的输入 Token |
+| `cacheCreation` | 创建缓存使用的输入 Token |
+| `output` | 输出 Token，包含 reasoning 输出 |
+| `reasoningOutput` | `output` 的拆分子集，仅展示 |
+
+总 Token 开销（含缓存）统一计算为：
+
+```text
+totalTokensIncludingCache = uncachedInput + cacheRead + cacheCreation + output
+```
+
+`reasoningOutput` 已包含在 `output` 中，绝不再次加入总量。
+
+Claude Code 映射：
+
+```text
+uncachedInput = input_tokens
+cacheRead = cache_read_input_tokens
+cacheCreation = cache_creation_input_tokens
+output = output_tokens
+```
+
+Codex 映射只使用每个 `token_count.info.last_token_usage`，不累加累计字段 `total_token_usage`：
+
+```text
+uncachedInput = input_tokens - cached_input_tokens
+cacheRead = cached_input_tokens
+cacheCreation = 0
+output = output_tokens
+reasoningOutput = reasoning_output_tokens
+```
+
+Codex 的 `input_tokens` 已包含 `cached_input_tokens`，所以不能再把两者作为两个完整输入量相加。fork、resume 或派生会话可能复制历史 Token 事件；索引使用不依赖文件路径和新会话 ID 的稳定事件指纹跨文件去重。
+
+缓存命中率为：
+
+```text
+cacheRead / (uncachedInput + cacheRead)
+```
+
+分母为 0 时显示“—”。概览、按天、按模型和按项目的总 Token 均使用同一公式。
+
+### 成本说明
+
+成本按产品和可靠匹配的具体模型分别估算。Codex 成本显示为 **API 等价估算**，仅表示按对应 OpenAI API 标准 Token 单价换算的参考值，不代表 ChatGPT 或 Codex 订阅的实际账单、额度或积分消耗。
+
+无法可靠匹配价格的模型显示“—”。合并统计只累加已知价格的估算成本，并显示未知价格 Token 的覆盖提示；不会把未知价格当作零成本。内置价格于 2026-07-17 对照 [Anthropic 定价](https://platform.claude.com/docs/en/about-claude/pricing) 与 OpenAI 官方模型页（例如 [GPT-5.5](https://developers.openai.com/api/docs/models/gpt-5.5)、[GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4)、[GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini)、[GPT-5.1 Codex Max](https://developers.openai.com/api/docs/models/gpt-5.1-codex-max)、[o4-mini](https://developers.openai.com/api/docs/models/o4-mini) 与 [GPT-4.1](https://developers.openai.com/api/docs/models/gpt-4.1)）复核；模型价格变化后应重新核验。
+
+### 增量缓存
+
+索引缓存 schema 为 **v5**。每条 history/会话文件缓存记录包含 `agent`，缓存键包含产品和文件身份；文件 `mtime` 与长度指纹未变化时复用解析结果，仅重新解析新增或变化的文件。删除文件、路径设置变化或 cache schema 版本变化会使对应缓存失效。Claude 与 Codex 扫描均可并行进行。
+
+缓存写在本应用的系统数据目录，不写入 `~/.claude` 或 `~/.codex`。缓存是本地派生数据，可能含解析后的 Prompt、消息摘要和用量；它与原始历史一样应按敏感数据保护。
+
+### 隐私边界
+
+- 不读取 Codex `auth.json`。
+- 不把 Codex 私有 SQLite 表作为主要数据源。
+- 不联网、不上传、不遥测历史内容。
+- 不修改或删除 `~/.claude`、`~/.codex` 及自定义数据目录中的任何内容。
+- 应用只写自身设置、索引缓存，以及用户主动导出的 Markdown 文件。
+
+### 开发与验证
+
+要求 Node.js 18+、pnpm 8+ 和 Rust 工具链。Rust 安装见 [`Rust工具链安装指南.md`](./Rust工具链安装指南.md)。
 
 ```bash
 pnpm install
-pnpm tauri dev      # 开发模式（前端 HMR + Rust 自动编译）
-pnpm tauri build    # 构建发布版本
+pnpm tauri dev
 ```
 
-> 首次 `pnpm tauri dev` 需把 Rust 依赖编译一遍，约几分钟，属正常现象。
+发布前门禁：
 
-### ⚙️ 配置数据源（可选）
-
-默认读取 `~/.claude`。若你的数据不在默认位置，点击应用顶栏的 **⚙️ 设置** 按钮，在弹窗中填写：
-
-| 字段 | 说明 |
-|---|---|
-| `claudeDataDir` | Claude 数据目录（含 `history.jsonl` / `projects` / `sessions`） |
-| `historyFile` / `projectsDir` / `sessionsDir` | 可选，单独覆盖某一项；留空则由 `claudeDataDir` 推导 |
-
-全部留空 = 默认 `~/.claude`。保存后立即生效，无需重启或重新编译。
-
-> 配置保存在系统应用配置目录（macOS 为 `~/Library/Application Support/com.xzl.cchistoryviewer/settings.json`），发布版与源码运行均可用。源码运行时也兼容旧版「项目根目录 `settings.json`」（参考 `settings.example.json`），但优先级低于应用内设置。
-
-### 🗂 项目结构
-
-```
-src/              React 前端（pages / components / hooks / lib）
-src-tauri/src/    Rust 后端（parser 解析 / indexer 索引 / export 导出 / commands 命令）
-scripts/          应用图标生成脚本
+```bash
+cd src-tauri
+cargo fmt --check
+cargo test
+cd ..
+pnpm build
 ```
 
-### 🔒 隐私
-
-完全本地运行——不联网、不上传、不采集任何数据；对 `~/.claude` 只读不写。
-
-### 📄 许可证
-
-[MIT](./LICENSE)
+`cargo test` 包含完全合成的 Claude 与 Codex fixture/golden 数据，不应加入任何真实 Prompt、私人绝对路径、凭据或真实缓存。真实数据验收只做只读冒烟检查，不在日志或报告中输出内容。
 
 ---
 
 ## English
 
-A fully local, **read-only** desktop tool: it scans the data under `~/.claude/`, aggregates
-every prompt you have typed in Claude Code by folder (project), and provides global /
-in-folder fuzzy search, statistics, and full conversation views.
+Coding Agent History Viewer is a Tauri desktop application that scans Claude Code and OpenAI Codex history locally and groups prompts, sessions, tool calls, and token usage by working directory. It makes no network requests and does not upload history.
 
-### ✨ Features
+### Features
 
-- **Folder navigation** — browse every historical prompt under a folder (project), the primary navigation dimension
-- **Merged data sources** — prompts from `history.jsonl` (input history) and user messages from conversation files are merged & de-duplicated, with the origin clearly labelled
-- **Token usage & cost statistics** — per-assistant-message token usage aggregated from conversation files (de-duplicated across resumed/forked sessions), with estimated cost by day / model / project and cache hit rate
-- **Fuzzy search** — global or current-folder scope; substring match, case-insensitive, space-tokenised (multi-keyword AND), with match highlighting
-- **Statistics** — total prompts, daily activity, 24-hour distribution, most active folders, Claude Code versions, and more
-- **Conversation detail** — view full sessions as chat bubbles; tool calls / thinking blocks are collapsible; one-click copy of the `claude --resume` command to continue a session
-- **One-click copy** — copy any prompt right from its card; find it, reuse it
-- **Date-range export** — pick a date range and export every prompt you sent to Claude Code as a single complete Markdown file (grouped by folder / by day / flat timeline), saved to `~/Downloads` with one click
-- **Full-conversation export** — export a whole session as Markdown, optionally including tool calls and thinking blocks
-- **Slash-command filter** — show / hide `/clear`, `/model` and other commands with one click
-- **Bilingual UI (English / Chinese)** / **Dark / light theme**
-- **Incremental indexing** — parse results are cached per file; only changed conversation files are re-parsed, so even large histories open instantly
+- Filter the overview by **Claude Code / Codex / All**. All is the default and the choice is persisted locally.
+- Browse projects, prompts, and sessions by working directory. In All mode, an identical `cwd` is one project.
+- View recent prompts, global and folder search, full conversations, Markdown, tool calls, and thinking content.
+- Preserve the Claude Code or Codex identity on prompts, sessions, and exports.
+- Compare activity, model and CLI versions, normalized tokens, cache hit rate, and estimated cost.
+- Stream JSONL line by line, scan files in parallel, and reuse a per-file `mtime` cache.
+- Continue working when either product's data directory is absent.
 
-### 🧱 Tech Stack
+### Data paths and precedence
 
-| Layer | Technology |
-|---|---|
-| Desktop shell | Tauri v2 |
-| Frontend | Vite · React 18 · TypeScript · Tailwind CSS v4 |
-| Backend | Rust (JSONL parsing, indexing, search) |
-| Others | Recharts · React Router · TanStack Query |
+Claude Code defaults to `~/.claude/history.jsonl`, `~/.claude/projects/**/*.jsonl`, and `~/.claude/sessions/*.json`. Legacy `historyFile`, `projectsDir`, and `sessionsDir` settings override individual paths; otherwise paths derive from `claudeDataDir`, then `~/.claude`.
 
-### 📂 Data Sources (read-only)
+Codex reads:
 
-| Source | Path | Purpose |
-|---|---|---|
-| Prompt history | `~/.claude/history.jsonl` | every prompt typed into the input box |
-| Full conversations | `~/.claude/projects/<encoded-path>/*.jsonl` | message streams & conversation detail |
-| Session metadata | `~/.claude/sessions/*.json` | session status, Claude Code version |
+```text
+<CODEX_ROOT>/history.jsonl
+<CODEX_ROOT>/sessions/YYYY/MM/DD/rollout-*.jsonl
+<CODEX_ROOT>/archived_sessions/*.jsonl
+```
 
-> ⚠️ This tool **never modifies or deletes** anything under `~/.claude/`. All data is processed locally and nothing is uploaded.
+`CODEX_ROOT` precedence is explicit `codexDataDir`, then `CODEX_HOME`, then `~/.codex`. The settings view reports configured and resolved paths separately for both products. Existing Claude-only settings remain valid. The bundle identifier stays `com.xzl.cchistoryviewer` so existing application settings are retained.
 
-### 🚀 Getting Started
+### Codex compatibility
 
-Requirements: Node.js ≥ 18, pnpm ≥ 8, and the Rust toolchain. See the
-[Rust toolchain install guide](./Rust工具链安装指南.md) (Chinese).
+- `session_meta` supplies session ID, `cwd`, CLI version, and client source; the latest `turn_context` supplies the active model.
+- Current user prompts come from `history.jsonl` and `event_msg.user_message`, associated through `session_id` and `session_meta.cwd`.
+- A fully legacy rollout falls back to `response_item` records with `role=user`. If one file changes format mid-stream, sanitized legacy prompts before the first event are retained, while `event_msg.user_message` becomes canonical from that point onward. Developer/system messages and injected `AGENTS.md`, `environment_context`, or `codex_internal_context` content are excluded.
+- Assistant messages and function/custom tool calls come from `response_item`. Unknown events are ignored.
+- Old rollouts containing only `session_meta` and `response_item` remain readable without model or token data.
+- The `ts` field in `history.jsonl` accepts Unix seconds or milliseconds. One malformed JSONL line does not abort the file or index.
+- Automatic subagent prompts and sessions are excluded from default prompt/session statistics, while their actual model calls remain in token usage under the subagent `cwd`.
+
+Codex JSONL is streamed rather than loaded as a whole, including histories larger than 1 GB, while files continue to be scanned in parallel.
+
+### Domain and filtering invariants
+
+The normalized model uses `agent = claude | codex` and `origin = history | conversation | both`. `origin` describes where a prompt was observed, not which product produced it. Agent identity is part of every stable ID, session route, deduplication key, and cache key. Equal session IDs or prompt text from different products never collide or deduplicate.
+
+For the All filter, prompt count, session count, and every normalized token component equal Claude plus Codex. Project count is the set union of `cwd` paths. Merged project navigation never removes the agent identity from its prompts and sessions.
+
+### Token accounting
+
+The unified fields are `uncachedInput`, `cacheRead`, `cacheCreation`, `output`, and `reasoningOutput`.
+
+```text
+totalTokensIncludingCache = uncachedInput + cacheRead + cacheCreation + output
+```
+
+`reasoningOutput` is a subset of `output` and is not added again.
+
+Claude maps `input_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, and `output_tokens` directly to the first four fields.
+
+For Codex, only each `token_count.info.last_token_usage` is added; cumulative `total_token_usage` is ignored:
+
+```text
+uncachedInput = input_tokens - cached_input_tokens
+cacheRead = cached_input_tokens
+cacheCreation = 0
+output = output_tokens
+reasoningOutput = reasoning_output_tokens
+```
+
+Codex `input_tokens` already includes cached input. Copied fork/resume usage is removed with a stable event fingerprint independent of file path and a new session ID. Cache hit rate is `cacheRead / (uncachedInput + cacheRead)` and displays “—” for a zero denominator.
+
+### Cost, cache, and privacy
+
+Codex cost is labelled an **API-equivalent estimate**. It is a reference conversion using reliably matched OpenAI API token prices, not an actual ChatGPT/Codex subscription charge, allowance, or credit balance. Unknown models display “—”; combined totals include known estimated cost and disclose how many tokens have unknown pricing. Built-in rates were checked on 2026-07-17 against [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing) and official OpenAI model pages such as [GPT-5.5](https://developers.openai.com/api/docs/models/gpt-5.5), [GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4), [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini), [GPT-5.1 Codex Max](https://developers.openai.com/api/docs/models/gpt-5.1-codex-max), [o4-mini](https://developers.openai.com/api/docs/models/o4-mini), and [GPT-4.1](https://developers.openai.com/api/docs/models/gpt-4.1).
+
+Cache schema **v5** is agent-aware and stores per-file parsed results keyed by product and file identity. Unchanged `mtime` and file-length fingerprints are reused; changed, added, removed, reconfigured, or old-schema entries are rebuilt. The cache lives in this application's data directory and may contain derived prompt text, summaries, and usage.
+
+The application does not read Codex `auth.json`, does not use private Codex SQLite tables as its primary source, makes no history upload or telemetry request, and never writes or deletes data under Claude/Codex roots. It writes only its own settings, index cache, and Markdown files explicitly exported by the user.
+
+### Development and release checks
 
 ```bash
 pnpm install
-pnpm tauri dev      # development mode (frontend HMR + Rust auto-rebuild)
-pnpm tauri build    # build a release bundle
+pnpm tauri dev
+
+cd src-tauri
+cargo fmt --check
+cargo test
+cd ..
+pnpm build
 ```
 
-> The first `pnpm tauri dev` compiles all Rust dependencies once and may take a few minutes — this is normal.
+Tests use synthetic fixtures only. Real Claude/Codex data is allowed solely for a read-only smoke test and must never be committed or printed in a report.
 
-### ⚙️ Configuration (optional)
-
-By default the app reads `~/.claude`. If your data lives elsewhere, click the **⚙️ Settings** button in the top bar and fill in:
-
-| Field | Description |
-|---|---|
-| `claudeDataDir` | the Claude data directory (containing `history.jsonl` / `projects` / `sessions`) |
-| `historyFile` / `projectsDir` / `sessionsDir` | optional per-path overrides; left empty they are derived from `claudeDataDir` |
-
-All empty = default `~/.claude`. Changes take effect immediately — no restart or recompilation needed.
-
-> Settings are stored in the OS app-config directory (`~/Library/Application Support/com.xzl.cchistoryviewer/settings.json` on macOS), which works for both packaged builds and source runs. When running from source, a legacy `settings.json` in the project root (see `settings.example.json`) is still honoured as a fallback, at lower priority than the in-app settings.
-
-### 🗂 Project Structure
-
-```
-src/              React frontend (pages / components / hooks / lib)
-src-tauri/src/    Rust backend (parser / indexer / export / commands)
-scripts/          app icon generator
-```
-
-### 🔒 Privacy
-
-Runs entirely on your machine — no network, no upload, no telemetry. `~/.claude` is read only, never written.
-
-### 📄 License
+### License
 
 [MIT](./LICENSE)

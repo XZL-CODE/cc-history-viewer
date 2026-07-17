@@ -5,6 +5,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { translate } from "@/i18n";
 import type {
   AppStats,
+  Agent,
+  AgentFilter,
   ConversationDetail,
   ConversationExportResult,
   ExportParams,
@@ -20,40 +22,54 @@ import type {
 } from "./types";
 
 export const api = {
-  getProjects: () => invoke<ProjectInfo[]>("get_projects"),
+  getProjects: (agentFilter: AgentFilter) =>
+    invoke<ProjectInfo[]>("get_projects", { agentFilter }),
 
   getProjectPrompts: (
     project: string,
     sort: SortMode,
-    includeCommands: boolean
+    includeCommands: boolean,
+    agentFilter: AgentFilter
   ) =>
     invoke<PromptEntry[]>("get_project_prompts", {
       project,
       sort,
       includeCommands,
+      agentFilter,
     }),
 
-  getRecentPrompts: (limit: number, includeCommands: boolean) =>
-    invoke<PromptEntry[]>("get_recent_prompts", { limit, includeCommands }),
+  getRecentPrompts: (
+    limit: number,
+    includeCommands: boolean,
+    agentFilter: AgentFilter
+  ) =>
+    invoke<PromptEntry[]>("get_recent_prompts", {
+      limit,
+      includeCommands,
+      agentFilter,
+    }),
 
   searchPrompts: (
     query: string,
     projectFilter: string | null,
-    includeCommands: boolean
+    includeCommands: boolean,
+    agentFilter: AgentFilter
   ) =>
     invoke<SearchResult[]>("search_prompts", {
       query,
       projectFilter,
       includeCommands,
+      agentFilter,
     }),
 
-  getStats: () => invoke<AppStats>("get_stats"),
+  getStats: (agentFilter: AgentFilter) =>
+    invoke<AppStats>("get_stats", { agentFilter }),
 
-  getProjectSessions: (project: string) =>
-    invoke<SessionSummary[]>("get_project_sessions", { project }),
+  getProjectSessions: (project: string, agentFilter: AgentFilter) =>
+    invoke<SessionSummary[]>("get_project_sessions", { project, agentFilter }),
 
-  getConversation: (sessionId: string) =>
-    invoke<ConversationDetail>("get_conversation", { sessionId }),
+  getConversation: (agent: Agent, sessionId: string) =>
+    invoke<ConversationDetail>("get_conversation", { agent, sessionId }),
 
   getIndexMeta: () => invoke<IndexMeta>("get_index_meta"),
 
@@ -66,6 +82,7 @@ export const api = {
       project: p.project,
       includeCommands: p.includeCommands,
       groupBy: p.groupBy,
+      agentFilter: p.agentFilter,
       write: p.write,
       lang: p.lang,
     }),
@@ -74,6 +91,7 @@ export const api = {
     query: string;
     projectFilter: string | null;
     includeCommands: boolean;
+    agentFilter: AgentFilter;
     write: boolean;
     lang?: string;
   }) =>
@@ -81,11 +99,13 @@ export const api = {
       query: p.query,
       projectFilter: p.projectFilter,
       includeCommands: p.includeCommands,
+      agentFilter: p.agentFilter,
       write: p.write,
       lang: p.lang,
     }),
 
   exportConversation: (p: {
+    agent: Agent;
     sessionId: string;
     includeTools: boolean;
     write: boolean;
@@ -93,6 +113,7 @@ export const api = {
   }) =>
     invoke<ConversationExportResult>("export_conversation", {
       sessionId: p.sessionId,
+      agent: p.agent,
       includeTools: p.includeTools,
       write: p.write,
       lang: p.lang,

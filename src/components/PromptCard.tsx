@@ -11,7 +11,7 @@ import {
   GitBranch,
   MessageSquare,
 } from "lucide-react";
-import type { PromptEntry } from "@/lib/types";
+import type { PromptEntry, PromptOrigin } from "@/lib/types";
 import { useCopy } from "@/hooks/useCopy";
 import { useStore } from "@/store";
 import { useT, type DictKey } from "@/i18n";
@@ -25,21 +25,24 @@ import {
 } from "@/lib/utils";
 import { Highlight } from "./Highlight";
 import { Badge } from "./ui";
+import { AgentBadge } from "./AgentBadge";
 
-const sourceLabelKey: Record<string, DictKey> = {
-  history: "sourceHistory",
-  conversation: "sourceConversation",
-  both: "sourceBoth",
+const originLabelKey: Record<PromptOrigin, DictKey> = {
+  history: "originHistory",
+  conversation: "originConversation",
+  both: "originBoth",
 };
 
 export function PromptCard({
   entry,
   ranges,
   showProject = false,
+  showAgentBadge = true,
 }: {
   entry: PromptEntry;
   ranges?: [number, number][];
   showProject?: boolean;
+  showAgentBadge?: boolean;
 }) {
   const t = useT();
   // 点击卡片内链接时清空搜索词：否则搜索结果层会一直盖住目标页面（路由其实已跳转）
@@ -47,7 +50,7 @@ export function PromptCard({
   const [expanded, setExpanded] = useState(false);
   const { copied, copy } = useCopy();
   const collapsible = entry.charCount > 150 || entry.text.includes("\n");
-  const sourceKey = sourceLabelKey[entry.source];
+  const originKey = originLabelKey[entry.origin];
 
   return (
     <div className="rounded-xl border border-border bg-surface p-3.5 transition-colors hover:border-accent/40">
@@ -98,7 +101,9 @@ export function PromptCard({
           </Badge>
         )}
 
-        <Badge tone="muted">{sourceKey ? t(sourceKey) : entry.source}</Badge>
+        {showAgentBadge && <AgentBadge agent={entry.agent} />}
+
+        <Badge tone="muted">{t(originKey)}</Badge>
 
         {entry.gitBranch && (
           <span className="flex items-center gap-1">
@@ -114,7 +119,7 @@ export function PromptCard({
           </span>
         )}
 
-        <span className="ml-auto flex items-center gap-3">
+        <span className="flex w-full items-center justify-end gap-3 sm:ml-auto sm:w-auto">
           <span>{t("charCount", { count: formatNumber(entry.charCount) })}</span>
           <button
             onClick={(e) => {
@@ -131,7 +136,7 @@ export function PromptCard({
           </button>
           {entry.sessionId && (
             <Link
-              to={`/conversation/${entry.sessionId}?t=${entry.timestamp}`}
+              to={`/conversation/${entry.agent}/${entry.sessionId}?t=${entry.timestamp}`}
               onClick={() => setQuery("")}
               className="flex items-center gap-1 font-medium text-accent hover:underline"
             >

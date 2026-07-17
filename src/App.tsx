@@ -15,9 +15,10 @@ export default function App() {
           <Route path="export" element={<Export />} />
           <Route path="project/:encoded" element={<ProjectPrompts />} />
           <Route
-            path="conversation/:sessionId"
+            path="conversation/:agent/:sessionId"
             element={<ConversationDetail />}
           />
+          <Route path="conversation/:sessionId" element={<ConversationDetail />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

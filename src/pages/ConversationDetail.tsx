@@ -21,6 +21,7 @@ import {
   Spinner,
 } from "@/components/ui";
 import type {
+  Agent,
   ChatMessage,
   ContentBlock,
   ConversationExportResult,
@@ -33,6 +34,7 @@ import {
   prettyPath,
 } from "@/lib/utils";
 import { api, errMessage } from "@/lib/api";
+import { AgentBadge } from "@/components/AgentBadge";
 
 function BlockView({ block }: { block: ContentBlock }) {
   const t = useT();
@@ -96,9 +98,12 @@ function MessageBubble({
       )}
     >
       <div className="mb-2.5 flex items-center gap-2">
-        <Badge tone={isUser ? "accent" : isSystem ? "warning" : "default"}>
-          {isUser ? t("roleUser") : isSystem ? t("commandBadge") : "Claude"}
-        </Badge>
+        <AgentBadge agent={msg.agent} />
+        {(isUser || isSystem) && (
+          <Badge tone={isUser ? "accent" : "warning"}>
+            {isUser ? t("roleUser") : t("commandBadge")}
+          </Badge>
+        )}
         {msg.isSidechain && <Badge tone="muted">{t("sidechainBadge")}</Badge>}
         <span className="text-[11px] text-muted">
           {absoluteTime(msg.timestamp)}
@@ -109,7 +114,7 @@ function MessageBubble({
           <BlockView key={i} block={b} />
         ))}
       </div>
-      {isSystem && (
+      {isSystem && msg.agent === "claude" && (
         <p className="mt-2 text-[11px] text-muted">{t("commandReplyNote")}</p>
       )}
     </div>
@@ -117,10 +122,12 @@ function MessageBubble({
 }
 
 export function ConversationDetail() {
-  const { sessionId } = useParams();
+  const { agent: agentParam, sessionId } = useParams();
+  const agent: Agent = agentParam === "codex" ? "codex" : "claude";
   const navigate = useNavigate();
   const t = useT();
   const { data, isLoading, isError, error } = useConversation(
+    agent,
     sessionId ?? null
   );
   const { copied, copy } = useCopy();
@@ -160,6 +167,11 @@ export function ConversationDetail() {
     useState<ConversationExportResult | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
 
+  useEffect(() => {
+    setExportResult(null);
+    setExportError(null);
+  }, [data?.sessionId, includeTools]);
+
   const handleExport = async () => {
     if (!data || exporting) return;
     setExporting(true);
@@ -167,6 +179,7 @@ export function ConversationDetail() {
     setExportResult(null);
     try {
       const res = await api.exportConversation({
+        agent: data.agent,
         sessionId: data.sessionId,
         includeTools,
         write: true,
@@ -193,12 +206,18 @@ export function ConversationDetail() {
   // 在终端中恢复该会话的命令
   const resumeCommand = data
     ? data.project
-      ? `cd "${data.project}" && claude --resume ${data.sessionId}`
-      : `claude --resume ${data.sessionId}`
+      ? `cd "${data.project}" && ${
+          data.agent === "codex"
+            ? `codex resume ${data.sessionId}`
+            : `claude --resume ${data.sessionId}`
+        }`
+      : data.agent === "codex"
+        ? `codex resume ${data.sessionId}`
+        : `claude --resume ${data.sessionId}`
     : "";
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-6">
+    <div className="mx-auto max-w-4xl px-4 py-5 sm:px-6 sm:py-6">
       <Button
         variant="ghost"
         size="sm"
@@ -308,6 +327,7 @@ export function ConversationDetail() {
               </div>
             )}
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-muted">
+              <AgentBadge agent={data.agent} />
               {data.project && (
                 <Link
                   to={`/project/${encodePath(data.project)}`}
@@ -324,7 +344,22 @@ export function ConversationDetail() {
                   {data.gitBranch}
                 </span>
               )}
-              {data.version && <Badge tone="muted">CC {data.version}</Badge>}
+              {data.cliVersion && (
+                <Badge tone="muted">CLI {data.cliVersion}</Badge>
+              )}
+              {data.source && (
+                <span>{t("conversationSource", { source: data.source })}</span>
+              )}
+              {data.models.length > 0 && (
+                <span
+                  className="max-w-[min(100%,24rem)] truncate"
+                  title={data.models.join(", ")}
+                >
+                  {t("conversationModels", {
+                    models: data.models.join(", "),
+                  })}
+                </span>
+              )}
               <span>
                 {absoluteTime(data.startedAt)} ~ {absoluteTime(data.endedAt)}
               </span>

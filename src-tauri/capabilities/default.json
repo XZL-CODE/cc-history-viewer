@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "应用默认权限。所有 ~/.claude 文件读取均由 Rust 后端直接完成，前端不直接访问文件系统，因此只需核心权限。",
+  "description": "应用默认权限。Claude Code 与 Codex 历史均由 Rust 后端直接只读访问，前端不直接访问文件系统，因此只需核心权限。",
   "windows": ["main"],
   "permissions": ["core:default"]
 }
